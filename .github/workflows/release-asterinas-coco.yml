@@ -1,0 +1,132 @@
+name: Release | Asterinas CoCo
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - VERSION
+  workflow_dispatch:
+    inputs:
+      release_name:
+        description: Optional display name for the GitHub release
+        required: false
+        type: string
+      draft_release:
+        description: Create the GitHub release as a draft
+        required: true
+        default: true
+        type: boolean
+      kata_release_repository:
+        description: Repository that hosts the Kata release assets
+        required: true
+        default: jjf-dev/kata-containers
+        type: string
+      qemu_version:
+        description: QEMU version to build
+        required: true
+        default: 10.2.1
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build-release:
+    name: Build and publish Asterinas CoCo release
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check Out Repository
+        uses: actions/checkout@v4
+
+      - name: Build Release Assets
+        id: bundle
+        env:
+          KATA_RELEASE_REPOSITORY: ${{ inputs.kata_release_repository || 'jjf-dev/kata-containers' }}
+          QEMU_VERSION: ${{ inputs.qemu_version || '10.2.1' }}
+        run: |
+          chmod +x ./tools/packaging/release/build-asterinas-coco-release.sh
+          ./tools/packaging/release/build-asterinas-coco-release.sh
+
+      - name: Upload Workflow Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: asterinas-coco-release
+          path: |
+            ${{ steps.bundle.outputs.release_asset }}
+            ${{ steps.bundle.outputs.manifest_file }}
+            ${{ steps.bundle.outputs.checksums_file }}
+            ${{ steps.bundle.outputs.release_notes }}
+            ${{ steps.bundle.outputs.qemu_tarball }}
+            ${{ steps.bundle.outputs.kata_initrd }}
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Derive Release Metadata
+        id: release
+        env:
+          WORKFLOW_RELEASE_NAME: ${{ inputs.release_name }}
+          WORKFLOW_DRAFT_RELEASE: ${{ inputs.draft_release || false }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          version="$(<VERSION)"
+          release_tag="v${version}"
+          release_name="${WORKFLOW_RELEASE_NAME:-Asterinas CoCo ${version}}"
+          draft_release="${WORKFLOW_DRAFT_RELEASE}"
+
+          echo "tag=${release_tag}" >> "${GITHUB_OUTPUT}"
+          echo "name=${release_name}" >> "${GITHUB_OUTPUT}"
+          echo "draft=${draft_release}" >> "${GITHUB_OUTPUT}"
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+          RELEASE_NAME: ${{ steps.release.outputs.name }}
+          DRAFT_RELEASE: ${{ steps.release.outputs.draft }}
+          RELEASE_ASSET: ${{ steps.bundle.outputs.release_asset }}
+          MANIFEST_FILE: ${{ steps.bundle.outputs.manifest_file }}
+          CHECKSUMS_FILE: ${{ steps.bundle.outputs.checksums_file }}
+          RELEASE_NOTES: ${{ steps.bundle.outputs.release_notes }}
+          QEMU_TARBALL: ${{ steps.bundle.outputs.qemu_tarball }}
+          KATA_INITRD: ${{ steps.bundle.outputs.kata_initrd }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          title="${RELEASE_NAME:-${RELEASE_TAG}}"
+          asset_args=(
+            "${RELEASE_ASSET}"
+            "${MANIFEST_FILE}"
+            "${CHECKSUMS_FILE}"
+            "${QEMU_TARBALL}"
+            "${KATA_INITRD}"
+          )
+
+          if gh release view "${RELEASE_TAG}" >/dev/null 2>&1; then
+            edit_draft_flag=(--draft=false)
+            if [[ "${DRAFT_RELEASE}" == "true" ]]; then
+              edit_draft_flag=(--draft)
+            fi
+
+            gh release edit "${RELEASE_TAG}" \
+              --title "${title}" \
+              --notes-file "${RELEASE_NOTES}" \
+              --target "${GITHUB_SHA}" \
+              "${edit_draft_flag[@]}"
+            gh release upload "${RELEASE_TAG}" "${asset_args[@]}" --clobber
+          else
+            draft_flag=()
+            if [[ "${DRAFT_RELEASE}" == "true" ]]; then
+              draft_flag+=(--draft)
+            fi
+
+            gh release create "${RELEASE_TAG}" \
+              "${asset_args[@]}" \
+              --title "${title}" \
+              --notes-file "${RELEASE_NOTES}" \
+              --target "${GITHUB_SHA}" \
+              "${draft_flag[@]}"
+          fi
