@@ -23,15 +23,22 @@ DIST_DIR="${BUILD_ROOT}/dist"
 QEMU_BUILD_DIR="${BUILD_ROOT}/qemu"
 STAGING_DIR="${BUILD_ROOT}/staging"
 EXTRACT_DIR="${BUILD_ROOT}/extract"
+ARTIFACTS_DIR="${BUILD_ROOT}/artifacts"
 
 KATA_RELEASE_URL_BASE="https://github.com/${KATA_RELEASE_REPOSITORY}/releases/download/${KATA_RELEASE_TAG}"
 KATA_RELEASE_API_URL="https://api.github.com/repos/${KATA_RELEASE_REPOSITORY}/releases/tags/${KATA_RELEASE_TAG}"
 KATA_STATIC_ASSET_NAME="${KATA_STATIC_ASSET_NAME:-}"
 KATA_STATIC_URL="${KATA_STATIC_URL:-}"
+GUEST_COMPONENTS_REPOSITORY="${GUEST_COMPONENTS_REPOSITORY:-https://github.com/taosue/guest-components}"
+GUEST_COMPONENTS_REF="${GUEST_COMPONENTS_REF:-main}"
+PAUSE_IMAGE_REPOSITORY="${PAUSE_IMAGE_REPOSITORY:-docker://registry.k8s.io/pause}"
+PAUSE_IMAGE_VERSION="${PAUSE_IMAGE_VERSION:-3.10}"
+RESOLV_CONF_NAMESERVER="${RESOLV_CONF_NAMESERVER:-8.8.8.8}"
 
 RELEASE_BASENAME="${RELEASE_BASENAME:-asterinas-coco-${VERSION}-${ARCHITECTURE}}"
 KATA_STATIC_FILE="${DOWNLOAD_DIR}/${KATA_STATIC_ASSET_NAME}"
 INITRD_FILE="${DOWNLOAD_DIR}/kata-containers-initrd.img"
+CUSTOMIZED_INITRD_FILE="${DIST_DIR}/kata-containers-initrd.img"
 QEMU_TARBALL="${DIST_DIR}/qemu-${QEMU_VERSION}-x86_64-softmmu.tar.gz"
 RELEASE_ASSET="${DIST_DIR}/${RELEASE_BASENAME}.tar.gz"
 MANIFEST_FILE="${DIST_DIR}/${RELEASE_BASENAME}.manifest.json"
@@ -165,9 +172,23 @@ write_manifest() {
   "kata_version": "${KATA_VERSION}",
   "kata_release_tag": "${KATA_RELEASE_TAG}",
   "kata_release_repository": "${KATA_RELEASE_REPOSITORY}",
+  "kata_release_package_url": "${KATA_STATIC_URL}",
   "kata_static_url": "${KATA_STATIC_URL}",
   "kata_static_asset_name": "${KATA_STATIC_ASSET_NAME}",
   "kata_initrd_path": "opt/kata/share/kata-containers/kata-containers-initrd.img",
+  "guest_components_repository": "${GUEST_COMPONENTS_REPOSITORY}",
+  "guest_components_ref": "${GUEST_COMPONENTS_REF}",
+  "guest_components_commit": "${GUEST_COMPONENTS_COMMIT}",
+  "guest_components_paths": [
+    "/usr/local/bin/confidential-data-hub",
+    "/usr/local/bin/attestation-agent",
+    "/usr/local/bin/api-server-rest",
+    "/etc/ocicrypt_config.json"
+  ],
+  "pause_image_repository": "${PAUSE_IMAGE_REPOSITORY}",
+  "pause_image_version": "${PAUSE_IMAGE_VERSION}",
+  "pause_bundle_path": "/pause_bundle",
+  "resolv_conf_nameserver": "${RESOLV_CONF_NAMESERVER}",
   "qemu_version": "${QEMU_VERSION}",
   "qemu_target_list": "x86_64-softmmu",
   "architecture": "${ARCHITECTURE}",
@@ -185,12 +206,14 @@ write_release_notes() {
 # Asterinas CoCo ${VERSION}
 
 - CoCo version: \`${VERSION}\`
-- Kata version: \`${KATA_VERSION}\`
-- Kata release tag: \`${KATA_RELEASE_TAG}\`
-- Kata static asset: \`${KATA_STATIC_URL}\`
-- Kata initrd path: \`opt/kata/share/kata-containers/kata-containers-initrd.img\`
+- Kata release tag: [\`${KATA_RELEASE_TAG}\`](https://github.com/${KATA_RELEASE_REPOSITORY}/tree/${KATA_RELEASE_TAG})
+- Kata release package: [\`${KATA_STATIC_ASSET_NAME}\`](${KATA_STATIC_URL})
+- Kata initrd path: \`artifacts/kata-containers-initrd.img\`
+- Guest Components commit: [\`${GUEST_COMPONENTS_COMMIT}\`](${GUEST_COMPONENTS_REPOSITORY}/commit/${GUEST_COMPONENTS_COMMIT})
+- Guest components paths inside initrd: \`/usr/local/bin/{confidential-data-hub, attestation-agent, api-server-rest}\`
+- Pause image: \`${PAUSE_IMAGE_REPOSITORY}:${PAUSE_IMAGE_VERSION}\`
 - QEMU version: \`${QEMU_VERSION}\`
-- QEMU targets: \`x86_64-softmmu\`
+- QEMU path: \`artifacts/$(basename "${QEMU_TARBALL}")\`
 - Asset SHA256: \`${release_sha}\`
 EOF
 }
@@ -215,16 +238,48 @@ build_qemu_tarball() {
 	trap - RETURN
 }
 
+build_coco_guest_artifacts() {
+	local guest_output_file="${ARTIFACTS_DIR}/guest-artifacts.outputs"
+
+	rm -rf "${ARTIFACTS_DIR}"
+	mkdir -p "${ARTIFACTS_DIR}"
+
+	GITHUB_OUTPUT="${guest_output_file}" \
+	BUILD_ROOT="${BUILD_ROOT}" \
+	GUEST_COMPONENTS_REPOSITORY="${GUEST_COMPONENTS_REPOSITORY}" \
+	GUEST_COMPONENTS_REF="${GUEST_COMPONENTS_REF}" \
+	PAUSE_IMAGE_REPOSITORY="${PAUSE_IMAGE_REPOSITORY}" \
+	PAUSE_IMAGE_VERSION="${PAUSE_IMAGE_VERSION}" \
+	"${script_dir}/build-coco-guest-artifacts.sh"
+
+	GUEST_COMPONENTS_DIR="$(sed -n 's/^guest_components_dir=//p' "${guest_output_file}" | head -n 1)"
+	PAUSE_BUNDLE_DIR="$(sed -n 's/^pause_bundle_dir=//p' "${guest_output_file}" | head -n 1)"
+	GUEST_COMPONENTS_COMMIT="$(sed -n 's/^guest_components_commit=//p' "${guest_output_file}" | head -n 1)"
+
+	[ -n "${GUEST_COMPONENTS_DIR}" ] || die "failed to capture guest components directory"
+	[ -n "${PAUSE_BUNDLE_DIR}" ] || die "failed to capture pause bundle directory"
+	[ -n "${GUEST_COMPONENTS_COMMIT}" ] || die "failed to capture guest components commit"
+}
+
+customize_initrd() {
+	INITRD_PATH="${INITRD_FILE}" \
+	OUTPUT_INITRD_PATH="${CUSTOMIZED_INITRD_FILE}" \
+	COCO_GUEST_COMPONENTS_DIR="${GUEST_COMPONENTS_DIR}" \
+	PAUSE_BUNDLE_DIR="${PAUSE_BUNDLE_DIR}" \
+	RESOLV_CONF_NAMESERVER="${RESOLV_CONF_NAMESERVER}" \
+	"${script_dir}/customize-initrd.sh"
+}
+
 stage_release_tree() {
 	rm -rf "${STAGING_DIR}"
 	mkdir -p "${STAGING_DIR}/artifacts"
 
-	install -m 0644 "${INITRD_FILE}" "${STAGING_DIR}/artifacts/kata-containers-initrd.img"
+	install -m 0644 "${CUSTOMIZED_INITRD_FILE}" "${STAGING_DIR}/artifacts/kata-containers-initrd.img"
 	install -m 0644 "${QEMU_TARBALL}" "${STAGING_DIR}/artifacts/$(basename "${QEMU_TARBALL}")"
 	install -m 0644 "${MANIFEST_FILE}" "${STAGING_DIR}/manifest.json"
 }
 
-require_cmd awk curl docker git python3 sha256sum tar install
+require_cmd awk cargo cpio curl docker git gzip python3 sha256sum skopeo tar umoci zstd install
 
 mkdir -p "${DOWNLOAD_DIR}" "${DIST_DIR}" "${QEMU_BUILD_DIR}"
 
@@ -235,6 +290,8 @@ resolve_kata_static_asset
 KATA_STATIC_FILE="${DOWNLOAD_DIR}/${KATA_STATIC_ASSET_NAME}"
 curl --fail --location --silent --show-error "${KATA_STATIC_URL}" --output "${KATA_STATIC_FILE}"
 extract_kata_initrd
+build_coco_guest_artifacts
+customize_initrd
 build_qemu_tarball
 write_manifest
 stage_release_tree
@@ -249,12 +306,15 @@ tar \
 	.
 
 write_release_notes
-sha256sum "${RELEASE_ASSET}" "${MANIFEST_FILE}" "${QEMU_TARBALL}" "${KATA_STATIC_FILE}" "${INITRD_FILE}" > "${CHECKSUMS_FILE}"
+sha256sum \
+	"${RELEASE_ASSET}" \
+	"${MANIFEST_FILE}" \
+	> "${CHECKSUMS_FILE}"
 
 emit_output "release_asset" "${RELEASE_ASSET}"
 emit_output "manifest_file" "${MANIFEST_FILE}"
 emit_output "checksums_file" "${CHECKSUMS_FILE}"
 emit_output "release_notes" "${RELEASE_NOTES}"
 emit_output "qemu_tarball" "${QEMU_TARBALL}"
-emit_output "kata_initrd" "${INITRD_FILE}"
+emit_output "kata_initrd" "${CUSTOMIZED_INITRD_FILE}"
 emit_output "kata_static_asset" "${KATA_STATIC_FILE}"
