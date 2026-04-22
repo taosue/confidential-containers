@@ -22,6 +22,11 @@ on:
         required: true
         default: jjf-dev/kata-containers
         type: string
+      guest_components_repository:
+        description: Repository that hosts CoCo guest-components
+        required: true
+        default: https://github.com/taosue/guest-components
+        type: string
       qemu_version:
         description: QEMU version to build
         required: true
@@ -39,12 +44,37 @@ jobs:
       - name: Check Out Repository
         uses: actions/checkout@v4
 
+      - name: Install Build Dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          sudo apt-get update
+          sudo apt-get install -y \
+            cargo \
+            clang \
+            cpio \
+            git \
+            gzip \
+            libcryptsetup-dev \
+            libssl-dev \
+            libtss2-dev \
+            make \
+            pkg-config \
+            protobuf-compiler \
+            skopeo \
+            umoci \
+            zstd
+
       - name: Build Release Assets
         id: bundle
         env:
           KATA_RELEASE_REPOSITORY: ${{ inputs.kata_release_repository || 'jjf-dev/kata-containers' }}
+          GUEST_COMPONENTS_REPOSITORY: ${{ inputs.guest_components_repository || 'https://github.com/taosue/guest-components' }}
           QEMU_VERSION: ${{ inputs.qemu_version || '10.2.1' }}
         run: |
+          chmod +x ./tools/packaging/release/build-coco-guest-artifacts.sh
+          chmod +x ./tools/packaging/release/customize-initrd.sh
           chmod +x ./tools/packaging/release/build-asterinas-coco-release.sh
           ./tools/packaging/release/build-asterinas-coco-release.sh
 
@@ -57,8 +87,6 @@ jobs:
             ${{ steps.bundle.outputs.manifest_file }}
             ${{ steps.bundle.outputs.checksums_file }}
             ${{ steps.bundle.outputs.release_notes }}
-            ${{ steps.bundle.outputs.qemu_tarball }}
-            ${{ steps.bundle.outputs.kata_initrd }}
           if-no-files-found: error
           retention-days: 7
 
@@ -90,8 +118,6 @@ jobs:
           MANIFEST_FILE: ${{ steps.bundle.outputs.manifest_file }}
           CHECKSUMS_FILE: ${{ steps.bundle.outputs.checksums_file }}
           RELEASE_NOTES: ${{ steps.bundle.outputs.release_notes }}
-          QEMU_TARBALL: ${{ steps.bundle.outputs.qemu_tarball }}
-          KATA_INITRD: ${{ steps.bundle.outputs.kata_initrd }}
         shell: bash
         run: |
           set -euo pipefail
@@ -101,8 +127,6 @@ jobs:
             "${RELEASE_ASSET}"
             "${MANIFEST_FILE}"
             "${CHECKSUMS_FILE}"
-            "${QEMU_TARBALL}"
-            "${KATA_INITRD}"
           )
 
           if gh release view "${RELEASE_TAG}" >/dev/null 2>&1; then
@@ -116,6 +140,13 @@ jobs:
               --notes-file "${RELEASE_NOTES}" \
               --target "${GITHUB_SHA}" \
               "${edit_draft_flag[@]}"
+            while IFS= read -r asset_name; do
+              case "${asset_name}" in
+                kata-containers-initrd.img|qemu-*-x86_64-softmmu.tar.gz)
+                  gh release delete-asset "${RELEASE_TAG}" "${asset_name}" --yes || true
+                  ;;
+              esac
+            done < <(gh release view "${RELEASE_TAG}" --json assets --jq '.assets[].name')
             gh release upload "${RELEASE_TAG}" "${asset_args[@]}" --clobber
           else
             draft_flag=()
