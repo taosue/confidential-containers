@@ -15,12 +15,10 @@ VERSION="${VERSION:-$(<"${repo_root_dir}/VERSION")}"
 KATA_VERSION="${KATA_VERSION:-$(<"${repo_root_dir}/KATA_VERSION")}"
 KATA_RELEASE_REPOSITORY="${KATA_RELEASE_REPOSITORY:-jjf-dev/kata-containers}"
 KATA_RELEASE_TAG="${KATA_RELEASE_TAG:-${KATA_VERSION}-asterinas}"
-QEMU_VERSION="${QEMU_VERSION:-10.2.1}"
 
 BUILD_ROOT="${BUILD_ROOT:-${repo_root_dir}/build/asterinas-coco-release}"
 DOWNLOAD_DIR="${BUILD_ROOT}/downloads"
 DIST_DIR="${BUILD_ROOT}/dist"
-QEMU_BUILD_DIR="${BUILD_ROOT}/qemu"
 STAGING_DIR="${BUILD_ROOT}/staging"
 EXTRACT_DIR="${BUILD_ROOT}/extract"
 ARTIFACTS_DIR="${BUILD_ROOT}/artifacts"
@@ -39,7 +37,6 @@ RELEASE_BASENAME="${RELEASE_BASENAME:-asterinas-coco-${VERSION}-${ARCHITECTURE}}
 KATA_STATIC_FILE="${DOWNLOAD_DIR}/${KATA_STATIC_ASSET_NAME}"
 INITRD_FILE="${DOWNLOAD_DIR}/kata-containers-initrd.img"
 CUSTOMIZED_INITRD_FILE="${DIST_DIR}/kata-containers-initrd.img"
-QEMU_TARBALL="${DIST_DIR}/qemu-${QEMU_VERSION}-x86_64-softmmu.tar.gz"
 RELEASE_ASSET="${DIST_DIR}/${RELEASE_BASENAME}.tar.gz"
 MANIFEST_FILE="${DIST_DIR}/${RELEASE_BASENAME}.manifest.json"
 CHECKSUMS_FILE="${DIST_DIR}/${RELEASE_BASENAME}.SHA256SUMS"
@@ -189,8 +186,6 @@ write_manifest() {
   "pause_image_version": "${PAUSE_IMAGE_VERSION}",
   "pause_bundle_path": "/pause_bundle",
   "resolv_conf_nameserver": "${RESOLV_CONF_NAMESERVER}",
-  "qemu_version": "${QEMU_VERSION}",
-  "qemu_target_list": "x86_64-softmmu",
   "architecture": "${ARCHITECTURE}",
   "git_commit": "${GIT_COMMIT}"
 }
@@ -212,30 +207,8 @@ write_release_notes() {
 - Guest Components commit: [\`${GUEST_COMPONENTS_COMMIT}\`](${GUEST_COMPONENTS_REPOSITORY}/commit/${GUEST_COMPONENTS_COMMIT})
 - Guest components paths inside initrd: \`/usr/local/bin/{confidential-data-hub, attestation-agent, api-server-rest}\`
 - Pause image: \`${PAUSE_IMAGE_REPOSITORY}:${PAUSE_IMAGE_VERSION}\`
-- QEMU version: \`${QEMU_VERSION}\`
-- QEMU path: \`artifacts/$(basename "${QEMU_TARBALL}")\`
 - Asset SHA256: \`${release_sha}\`
 EOF
-}
-
-build_qemu_tarball() {
-	local image_tag="asterinas-coco-qemu:${QEMU_VERSION}"
-	local container_id
-
-	rm -f "${QEMU_TARBALL}"
-	rm -rf "${QEMU_BUILD_DIR}/qemu"
-	docker build \
-		-f "${script_dir}/qemu-x86_64.Dockerfile" \
-		--build-arg "QEMU_VERSION=${QEMU_VERSION}" \
-		-t "${image_tag}" \
-		"${repo_root_dir}"
-
-	container_id="$(docker create "${image_tag}")"
-	trap 'docker rm -f "${container_id}" >/dev/null 2>&1 || true' RETURN
-	docker cp "${container_id}:/usr/local/qemu" "${QEMU_BUILD_DIR}"
-	tar -C "${QEMU_BUILD_DIR}" -czf "${QEMU_TARBALL}" qemu
-	docker rm -f "${container_id}" >/dev/null
-	trap - RETURN
 }
 
 build_coco_guest_artifacts() {
@@ -275,13 +248,12 @@ stage_release_tree() {
 	mkdir -p "${STAGING_DIR}/artifacts"
 
 	install -m 0644 "${CUSTOMIZED_INITRD_FILE}" "${STAGING_DIR}/artifacts/kata-containers-initrd.img"
-	install -m 0644 "${QEMU_TARBALL}" "${STAGING_DIR}/artifacts/$(basename "${QEMU_TARBALL}")"
 	install -m 0644 "${MANIFEST_FILE}" "${STAGING_DIR}/manifest.json"
 }
 
-require_cmd awk cargo cpio curl docker git gzip python3 sha256sum skopeo tar umoci zstd install
+require_cmd awk cargo cpio curl git gzip python3 sha256sum skopeo tar umoci zstd install
 
-mkdir -p "${DOWNLOAD_DIR}" "${DIST_DIR}" "${QEMU_BUILD_DIR}"
+mkdir -p "${DOWNLOAD_DIR}" "${DIST_DIR}"
 
 BUILD_TIME_UTC="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 GIT_COMMIT="$(git -C "${repo_root_dir}" rev-parse HEAD)"
@@ -292,7 +264,6 @@ curl --fail --location --silent --show-error "${KATA_STATIC_URL}" --output "${KA
 extract_kata_initrd
 build_coco_guest_artifacts
 customize_initrd
-build_qemu_tarball
 write_manifest
 stage_release_tree
 
@@ -315,6 +286,5 @@ emit_output "release_asset" "${RELEASE_ASSET}"
 emit_output "manifest_file" "${MANIFEST_FILE}"
 emit_output "checksums_file" "${CHECKSUMS_FILE}"
 emit_output "release_notes" "${RELEASE_NOTES}"
-emit_output "qemu_tarball" "${QEMU_TARBALL}"
 emit_output "kata_initrd" "${CUSTOMIZED_INITRD_FILE}"
 emit_output "kata_static_asset" "${KATA_STATIC_FILE}"

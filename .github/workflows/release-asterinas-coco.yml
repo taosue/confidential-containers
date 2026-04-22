@@ -27,12 +27,6 @@ on:
         required: true
         default: https://github.com/taosue/guest-components
         type: string
-      qemu_version:
-        description: QEMU version to build
-        required: true
-        default: 10.2.1
-        type: string
-
 permissions:
   contents: write
 
@@ -71,7 +65,6 @@ jobs:
         env:
           KATA_RELEASE_REPOSITORY: ${{ inputs.kata_release_repository || 'jjf-dev/kata-containers' }}
           GUEST_COMPONENTS_REPOSITORY: ${{ inputs.guest_components_repository || 'https://github.com/taosue/guest-components' }}
-          QEMU_VERSION: ${{ inputs.qemu_version || '10.2.1' }}
         run: |
           chmod +x ./tools/packaging/release/build-coco-guest-artifacts.sh
           chmod +x ./tools/packaging/release/customize-initrd.sh
@@ -142,7 +135,7 @@ jobs:
               "${edit_draft_flag[@]}"
             while IFS= read -r asset_name; do
               case "${asset_name}" in
-                kata-containers-initrd.img|qemu-*-x86_64-softmmu.tar.gz)
+                kata-containers-initrd.img)
                   gh release delete-asset "${RELEASE_TAG}" "${asset_name}" --yes || true
                   ;;
               esac
