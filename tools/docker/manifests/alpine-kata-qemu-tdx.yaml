@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: alpine-kata-qemu-tdx
+  namespace: default
+  labels:
+    app: alpine-kata-qemu-tdx
+spec:
+  runtimeClassName: kata-qemu-tdx
+  tolerations:
+    - key: node-role.kubernetes.io/control-plane
+      operator: Exists
+      effect: NoSchedule
+  containers:
+    - name: alpine
+      image: docker.1ms.run/alpine:latest
+      imagePullPolicy: IfNotPresent
+      command: ["/bin/sh", "-c"]
+      args: ["sleep infinity"]

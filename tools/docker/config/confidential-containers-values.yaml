@@ -1,0 +1,36 @@
+kata-as-coco-runtime:
+  imagePullPolicy: IfNotPresent
+  k8sDistribution: k8s
+  debug: false
+  tolerations:
+    - operator: Exists
+  snapshotter:
+    setup:
+      - nydus
+
+  shims:
+    qemu-snp:
+      enabled: false
+    qemu-tdx:
+      enabled: true
+      containerd:
+        snapshotter: nydus
+        forceGuestPull: false
+      crio:
+        guestPull: false
+    qemu-coco-dev:
+      enabled: true
+      containerd:
+        snapshotter: nydus
+        forceGuestPull: false
+      crio:
+        guestPull: false
+    qemu-coco-dev-runtime-rs:
+      enabled: false
+    qemu-nvidia-gpu-snp:
+      enabled: false
+    qemu-nvidia-gpu-tdx:
+      enabled: false
+
+  defaultShim:
+    amd64: qemu-coco-dev

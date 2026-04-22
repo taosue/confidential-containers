@@ -1,0 +1,7 @@
+[hypervisor.qemu]
+use_legacy_serial = true
+kernel_params = "console=ttyS0 earlyprintk=serial,ttyS0,115200 agent.debug_console agent.debug_console_vport=1026 systemd.unified_cgroup_hierarchy=1"
+
+[runtime]
+sandbox_cgroup_only = true
+static_sandbox_resource_mgmt = false
