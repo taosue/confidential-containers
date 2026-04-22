@@ -27,6 +27,16 @@ on:
         required: true
         default: https://github.com/taosue/guest-components
         type: string
+      image_repository:
+        description: Docker Hub repository to publish
+        required: false
+        default: asterinas/coco
+        type: string
+      push_image:
+        description: Push the Docker image when Docker Hub credentials are available
+        required: true
+        default: true
+        type: boolean
 permissions:
   contents: write
 
@@ -155,3 +165,14 @@ jobs:
               --target "${GITHUB_SHA}" \
               "${draft_flag[@]}"
           fi
+
+  publish-image:
+    name: Build and optionally push Asterinas CoCo image
+    needs: build-release
+    if: ${{ github.event_name == 'push' || inputs.draft_release == false }}
+    uses: ./.github/workflows/build-asterinas-coco-image.yml
+    with:
+      image_repository: ${{ inputs.image_repository || 'asterinas/coco' }}
+      kata_release_repository: ${{ inputs.kata_release_repository || 'jjf-dev/kata-containers' }}
+      push_image: ${{ github.event_name == 'push' || inputs.push_image }}
+    secrets: inherit
