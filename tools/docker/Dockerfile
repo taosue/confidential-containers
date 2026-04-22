@@ -60,6 +60,7 @@ RUN apt update && apt-get install -y --no-install-recommends \
     containerd \
     curl \
     conntrack \
+    busybox-syslogd \
     ebtables \
     ethtool \
     fuse3 \
@@ -68,7 +69,6 @@ RUN apt update && apt-get install -y --no-install-recommends \
     jq \
     kmod \
     python3 \
-    rsyslog \
     skopeo \
     socat && \
     apt clean && rm -rf /var/lib/apt/lists/*
@@ -102,7 +102,8 @@ RUN chmod 0755 /usr/local/bin/helm /usr/local/bin/kubeadm /usr/local/bin/kubelet
     find /opt/cni/bin -type f -exec chmod 0755 {} +
 
 RUN install -d /opt/coco/cache/kubeadm-images \
-    /opt/coco/cache/kata-deploy
+    /opt/coco/cache/kata-deploy \
+    /opt/coco/cache/chart-images
 
 RUN mapfile -t kubeadm_images < <(eval "${KUBEADM_IMAGE_LIST_CMD}") && \
     for image in "${kubeadm_images[@]}"; do \
@@ -112,7 +113,10 @@ RUN mapfile -t kubeadm_images < <(eval "${KUBEADM_IMAGE_LIST_CMD}") && \
     done && \
     skopeo copy --insecure-policy --override-os linux --override-arch amd64 \
         "docker://quay.io/kata-containers/kata-deploy:3.28.0" \
-        "docker-archive:/opt/coco/cache/kata-deploy/kata-deploy-amd64.tar:quay.io/kata-containers/kata-deploy:3.28.0"
+        "docker-archive:/opt/coco/cache/kata-deploy/kata-deploy-amd64.tar:quay.io/kata-containers/kata-deploy:3.28.0" && \
+    skopeo copy --insecure-policy --override-os linux --override-arch amd64 \
+        "docker://quay.io/kata-containers/kubectl:20260112" \
+        "docker-archive:/opt/coco/cache/chart-images/quay.io_kata-containers_kubectl_20260112.tar:quay.io/kata-containers/kubectl:20260112"
 
 RUN cat > /tmp/preload-containerd.sh <<'EOF' && bash /tmp/preload-containerd.sh && rm -f /tmp/preload-containerd.sh
 set -euo pipefail
@@ -139,8 +143,6 @@ for image in "${kubeadm_images[@]}"; do
     ctr -n k8s.io images import --all-platforms --no-unpack "${archive}"
 done
 
-ctr -n k8s.io images import --no-unpack /opt/coco/cache/kata-deploy/kata-deploy-amd64.tar
-
 for image in "${kubeadm_images[@]}"; do
     if ! ctr -n k8s.io images ls -q | grep -Fx "${image}" >/dev/null; then
         echo "missing preloaded image: ${image}" >&2
@@ -149,7 +151,6 @@ for image in "${kubeadm_images[@]}"; do
 done
 
 ctr -n k8s.io images ls | tee /tmp/containerd-preloaded-images.txt
-grep -F "quay.io/kata-containers/kata-deploy:3.28.0" /tmp/containerd-preloaded-images.txt
 
 kill "${containerd_pid}" >/dev/null 2>&1 || true
 wait "${containerd_pid}" 2>/dev/null || true
@@ -189,6 +190,7 @@ RUN install -m 0644 /opt/coco/config/qemu-coco-dev-runtime-minimal.toml \
         /etc/containerd/conf.d/50-coco-guest-pull.toml && \
     install -m 0644 /opt/coco/config/confidential-containers-values.yaml \
         /opt/coco/confidential-containers-values.yaml && \
+    install -m 0644 /opt/coco/config/kubeadm-coco-init.yaml /opt/coco/kubeadm-coco-init.yaml && \
     install -m 0644 /opt/coco/config/10-bridge.conflist /opt/coco/10-bridge.conflist && \
     install -m 0644 /opt/coco/config/nydus-config-proxy.toml /opt/coco/nydus-config-proxy.toml && \
     chmod 0755 /opt/coco/scripts/*.sh && \

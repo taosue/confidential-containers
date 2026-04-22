@@ -87,5 +87,5 @@ The image already contains:
 - Containerd guest-pull config: `/etc/containerd/conf.d/50-coco-guest-pull.toml`
 - Helm values: `/opt/coco/confidential-containers-values.yaml`
 - Prebuilt OCI archives for kubeadm images and `kata-deploy` under `/opt/coco/cache/`
-- Preloaded containerd image records and native snapshots under `/var/lib/containerd`
+- Preloaded kubeadm image records and native snapshots under `/var/lib/containerd`
 - Prebuilt Asterinas kernel/shim/initrd artifacts under `/opt/coco/prebuilt/asterinas-coco`

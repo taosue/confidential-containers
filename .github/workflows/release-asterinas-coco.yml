@@ -176,3 +176,11 @@ jobs:
       kata_release_repository: ${{ inputs.kata_release_repository || 'jjf-dev/kata-containers' }}
       push_image: ${{ github.event_name == 'push' || inputs.push_image }}
     secrets: inherit
+
+  test-image:
+    name: Test published Asterinas CoCo image
+    needs: publish-image
+    if: ${{ github.event_name == 'push' || (inputs.draft_release == false && inputs.push_image) }}
+    uses: ./.github/workflows/test-asterinas-coco-image.yml
+    with:
+      image_repository: ${{ inputs.image_repository || 'asterinas/coco' }}

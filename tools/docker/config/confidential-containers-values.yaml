@@ -2,6 +2,8 @@ kata-as-coco-runtime:
   imagePullPolicy: IfNotPresent
   k8sDistribution: k8s
   debug: false
+  kubectlImage:
+    tag: "20260112"
   tolerations:
     - operator: Exists
   snapshotter:

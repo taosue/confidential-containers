@@ -7,21 +7,23 @@ COCO_ROOT="${COCO_ROOT:-/opt/coco}"
 # https://github.com/confidential-containers/charts/tree/main/charts/confidential-containers
 CHART_VERSION="${CHART_VERSION:-0.19.0}"
 POD_CIDR="${POD_CIDR:-10.244.0.0/16}"
-KATA_DEPLOY_WAIT_TIMEOUT="${KATA_DEPLOY_WAIT_TIMEOUT:-900}"
+KATA_DEPLOY_WAIT_TIMEOUT="${KATA_DEPLOY_WAIT_TIMEOUT:-300}"
 KUBERNETES_VERSION="${KUBERNETES_VERSION:-}"
 KUBEADM_IMAGE_LIST_CMD="${KUBEADM_IMAGE_LIST_CMD:-}"
+UNPACK_KUBEADM_IMAGES="${UNPACK_KUBEADM_IMAGES:-false}"
 
 KUBEADM_IMAGES=()
 PAUSE_IMAGE="${PAUSE_IMAGE:-}"
 CONTAINERD_CONFIG_CHANGED=0
 PREBUILT_SHIM="/opt/coco/prebuilt/asterinas-coco/containerd-shim-kata-v2"
+DEV_LOG_PID_FILE="/tmp/dev-log.pid"
 
 log() {
     echo "[install] $*"
 }
 
 require_prereqs() {
-    for bin in helm kubeadm kubelet kubectl containerd ctr modprobe; do
+    for bin in helm kubeadm kubelet kubectl containerd ctr modprobe socat; do
         if ! command -v "${bin}" >/dev/null 2>&1; then
             echo "missing required binary: ${bin}" >&2
             exit 1
@@ -119,10 +121,61 @@ link_nydus_overlayfs() {
 }
 
 start_rsyslog() {
-    if ! pgrep -x rsyslogd >/dev/null 2>&1; then
-        log "starting rsyslogd"
-        rsyslogd
+    local dev_log_pid=""
+
+    if [ -f "${DEV_LOG_PID_FILE}" ]; then
+        dev_log_pid="$(cat "${DEV_LOG_PID_FILE}" 2>/dev/null || true)"
+        if [ -n "${dev_log_pid}" ] && kill -0 "${dev_log_pid}" 2>/dev/null; then
+            kill "${dev_log_pid}" >/dev/null 2>&1 || true
+        fi
+        rm -f "${DEV_LOG_PID_FILE}"
     fi
+
+    rm -f /dev/log /tmp/dev-log.log /tmp/dev-log.stdout /tmp/logger-smoke.log
+
+    log "starting /dev/log sink"
+    nohup socat \
+        UNIX-RECVFROM:/dev/log,fork,mode=666 \
+        OPEN:/tmp/dev-log.log,creat,append \
+        >/tmp/dev-log.stdout 2>&1 &
+    dev_log_pid="$!"
+    echo "${dev_log_pid}" > "${DEV_LOG_PID_FILE}"
+
+    if timeout 5 bash -c '
+        socket_path="$1"
+        process_id="$2"
+
+        while kill -0 "${process_id}" 2>/dev/null; do
+            if [ -S "${socket_path}" ]; then
+                exit 0
+            fi
+            sleep 0.05
+        done
+
+        exit 1
+    ' bash /dev/log "${dev_log_pid}" && \
+       kill -0 "${dev_log_pid}" 2>/dev/null; then
+        logger -t coco-syslog-smoke "syslog ready $(date +%s)" >/tmp/logger-smoke.log 2>&1 || true
+        return
+    fi
+
+    echo "syslog readiness check failed" >&2
+    echo "===== ls -l /dev/log =====" >&2
+    ls -l /dev/log >&2 2>/dev/null || true
+    echo "===== ss -xl | grep /dev/log =====" >&2
+    ss -xl >&2 2>/dev/null | grep -F '/dev/log' || true
+    echo "===== dev-log pid =====" >&2
+    cat "${DEV_LOG_PID_FILE}" >&2 2>/dev/null || true
+    echo "===== logger smoke test =====" >&2
+    logger -t coco-syslog-smoke "syslog failed $(date +%s)" >/tmp/logger-smoke.log 2>&1 || true
+    tail -n 240 /tmp/logger-smoke.log >&2 2>/dev/null || true
+    echo "===== dev-log.stdout =====" >&2
+    tail -n 240 /tmp/dev-log.stdout >&2 2>/dev/null || true
+    echo "===== dev-log.log =====" >&2
+    tail -n 240 /tmp/dev-log.log >&2 2>/dev/null || true
+    echo "===== ps -ef | grep socat =====" >&2
+    ps -ef | grep socat | grep -v grep >&2 || true
+    exit 1
 }
 
 start_containerd() {
@@ -170,6 +223,7 @@ image_archive_name() {
 
 ensure_preloaded_images() {
     local imported_kubeadm=0
+    local imported_chart=0
     local unpack_marker
 
     for image in "${KUBEADM_IMAGES[@]}"; do
@@ -184,26 +238,66 @@ ensure_preloaded_images() {
     done
 
     unpack_marker="/var/lib/containerd/.coco-kubeadm-native-unpack.$(printf '%s\n' "${KUBEADM_IMAGES[@]}" | sha256sum | awk '{print $1}')"
-    if [ -f "${unpack_marker}" ]; then
-        log "kubeadm images already unpacked with native snapshotter"
-    else
-        log "ensuring kubeadm images are unpacked with native snapshotter"
-        for image in "${KUBEADM_IMAGES[@]}"; do
-            if image_exists "${image}"; then
-                local digest
-                digest="$(ctr -n k8s.io images ls | awk -v ref="${image}" '$1 == ref {print $3; exit}')"
-                if [ -n "${digest}" ]; then
-                    ctr -n k8s.io snapshots unpack --snapshotter native "${digest}" >/tmp/ctr-unpack.log 2>&1 || true
+    if [ "${UNPACK_KUBEADM_IMAGES}" = "true" ]; then
+        if [ -f "${unpack_marker}" ]; then
+            log "kubeadm images already unpacked with native snapshotter"
+        else
+            log "ensuring kubeadm images are unpacked with native snapshotter"
+            for image in "${KUBEADM_IMAGES[@]}"; do
+                if image_exists "${image}"; then
+                    local digest
+                    digest="$(ctr -n k8s.io images ls | awk -v ref="${image}" '$1 == ref {print $3; exit}')"
+                    if [ -n "${digest}" ]; then
+                        ctr -n k8s.io snapshots unpack --snapshotter native "${digest}" >/tmp/ctr-unpack.log 2>&1 || true
+                    fi
                 fi
-            fi
-        done
-        touch "${unpack_marker}"
+            done
+            touch "${unpack_marker}"
+        fi
+    else
+        log "skipping kubeadm image native unpack"
     fi
 
     local kata_deploy_archive="${COCO_ROOT}/cache/kata-deploy/kata-deploy-amd64.tar"
     if [ -f "${kata_deploy_archive}" ] && ! image_exists "quay.io/kata-containers/kata-deploy:3.28.0"; then
         log "importing cached kata-deploy image (this can take several minutes)"
-        ctr -n k8s.io images import "${kata_deploy_archive}" >/tmp/ctr-import-kata-deploy.log 2>&1
+        if ! ctr -n k8s.io images import --local --all-platforms --no-unpack "${kata_deploy_archive}" >/tmp/ctr-import-kata-deploy.log 2>&1; then
+            echo "failed to import cached kata-deploy image" >&2
+            echo "===== ctr-import-kata-deploy.log =====" >&2
+            tail -n 240 /tmp/ctr-import-kata-deploy.log >&2 2>/dev/null || true
+            return 1
+        fi
+    fi
+
+    local chart_image="quay.io/kata-containers/kubectl:20260112"
+    local chart_archive="${COCO_ROOT}/cache/chart-images/$(image_archive_name "${chart_image}").tar"
+    if [ -f "${chart_archive}" ] && ! image_exists "${chart_image}"; then
+        if [ "${imported_chart}" = "0" ]; then
+            log "importing cached chart images"
+            imported_chart=1
+        fi
+        if ! ctr -n k8s.io images import --local --all-platforms --no-unpack "${chart_archive}" >/tmp/ctr-import-chart-images.log 2>&1; then
+            echo "failed to import cached chart image: ${chart_image}" >&2
+            echo "===== ctr-import-chart-images.log =====" >&2
+            tail -n 240 /tmp/ctr-import-chart-images.log >&2 2>/dev/null || true
+            return 1
+        fi
+    fi
+
+    local kata_deploy_digest
+    local kata_deploy_unpack_marker
+    kata_deploy_digest="$(ctr -n k8s.io images ls | awk '$1 == "quay.io/kata-containers/kata-deploy:3.28.0" {print $3; exit}')"
+    kata_deploy_unpack_marker="/var/lib/containerd/.coco-kata-deploy-native-unpack.${kata_deploy_digest:-missing}"
+    if [ -n "${kata_deploy_digest}" ] && [ ! -f "${kata_deploy_unpack_marker}" ]; then
+        mount_tmpfs_once /var/lib/containerd/tmpmounts 512m
+        log "ensuring kata-deploy image is unpacked with native snapshotter"
+        if ! ctr -n k8s.io snapshots unpack --snapshotter native "${kata_deploy_digest}" >/tmp/ctr-unpack-kata-deploy.log 2>&1; then
+            echo "failed to unpack kata-deploy image with native snapshotter" >&2
+            echo "===== ctr-unpack-kata-deploy.log =====" >&2
+            tail -n 240 /tmp/ctr-unpack-kata-deploy.log >&2 2>/dev/null || true
+            return 1
+        fi
+        touch "${kata_deploy_unpack_marker}"
     fi
 }
 
@@ -221,20 +315,6 @@ start_kubelet() {
             sleep 1
         done
 
-        if grep -q "^cgroupDriver:" /var/lib/kubelet/config.yaml; then
-            sed -i "s/^cgroupDriver:.*/cgroupDriver: cgroupfs/" /var/lib/kubelet/config.yaml
-        else
-            printf "\ncgroupDriver: cgroupfs\n" >> /var/lib/kubelet/config.yaml
-        fi
-
-        # This container is not booted by systemd. Pin resolvConf so kubelet
-        # does not try to probe systemd-resolved and emit a harmless warning.
-        if grep -q "^resolvConf:" /var/lib/kubelet/config.yaml; then
-            sed -i "s|^resolvConf:.*|resolvConf: /etc/resolv.conf|" /var/lib/kubelet/config.yaml
-        else
-            printf "resolvConf: /etc/resolv.conf\n" >> /var/lib/kubelet/config.yaml
-        fi
-
         mkdir -p /var/lib/containerd/tmpmounts
         if ! mountpoint -q /var/lib/containerd/tmpmounts; then
             mount -t tmpfs -o rw,size=512m tmpfs /var/lib/containerd/tmpmounts
@@ -247,6 +327,21 @@ start_kubelet() {
             --config=/var/lib/kubelet/config.yaml \
             ${KUBELET_KUBEADM_ARGS}
     ' >/tmp/kubelet.log 2>&1 &
+}
+
+write_kubeadm_config() {
+    local template="${COCO_ROOT}/kubeadm-coco-init.yaml"
+
+    if [ ! -f "${template}" ]; then
+        echo "missing kubeadm config template: ${template}" >&2
+        exit 1
+    fi
+
+    mkdir -p /etc/kubeadm
+    sed \
+        -e 's|${KUBERNETES_VERSION}|'"${KUBERNETES_VERSION}"'|g' \
+        -e 's|${POD_CIDR}|'"${POD_CIDR}"'|g' \
+        "${template}" > /etc/kubeadm/coco-init.yaml
 }
 
 install_kubeconfig() {
@@ -270,12 +365,14 @@ init_kubernetes() {
     fi
 
     log "running kubeadm init"
+    write_kubeadm_config
     if ! kubeadm init \
-        --kubernetes-version="${KUBERNETES_VERSION}" \
-        --pod-network-cidr="${POD_CIDR}" \
+        --config=/etc/kubeadm/coco-init.yaml \
         --ignore-preflight-errors=all \
         >/tmp/kubeadm-init.log 2>&1; then
-        tail -n 160 /tmp/kubeadm-init.log >&2 || true
+        tail -n 240 /tmp/kubeadm-init.log >&2 2>/dev/null || true
+        tail -n 240 /tmp/kubelet.log >&2 2>/dev/null || true
+        tail -n 240 /tmp/containerd.log >&2 2>/dev/null || true
         exit 1
     fi
 
@@ -325,7 +422,7 @@ install_confidential_containers() {
         -f "${COCO_ROOT}/confidential-containers-values.yaml"
 
     log "waiting for kata-deploy artifacts on host"
-    timeout "${KATA_DEPLOY_WAIT_TIMEOUT}" bash -lc '
+    if ! timeout "${KATA_DEPLOY_WAIT_TIMEOUT}" bash -lc '
         while true; do
             if [ -f /opt/kata/containerd/config.d/kata-deploy.toml ] && \
                [ -x /opt/kata/nydus-snapshotter/containerd-nydus-grpc ] && \
@@ -334,7 +431,32 @@ install_confidential_containers() {
             fi
             sleep 2
         done
-    '
+    '; then
+        kubectl get pods -n coco-system -o wide >&2 2>/dev/null || true
+        kubectl get daemonset -n coco-system >&2 2>/dev/null || true
+        exit 1
+    fi
+
+    log "waiting for kata runtimeclasses"
+    timeout 120 bash -lc '
+        while true; do
+            if kubectl get runtimeclass kata-qemu-coco-dev >/dev/null 2>&1 && \
+               kubectl get runtimeclass kata-qemu-tdx >/dev/null 2>&1; then
+                exit 0
+            fi
+            sleep 2
+        done
+    ' || true
+
+    # The daemonset keeps rerunning `kata-deploy install`, which copies the
+    # large Kata guest artifacts into fresh native snapshots on every restart.
+    # Once the host artifacts and runtimeclasses exist, stop it to avoid
+    # exhausting /var/lib/containerd during later demo runs.
+    if kata_artifacts_ready && runtimeclass_ready; then
+        log "stopping kata-deploy daemonset after host artifacts are ready"
+        kubectl delete daemonset -n coco-system kata-as-coco-runtime --ignore-not-found=true >/dev/null 2>&1 || true
+        kubectl wait --for=delete pod -n coco-system -l name=kata-as-coco-runtime --timeout=2m >/dev/null 2>&1 || true
+    fi
 }
 
 install_asterinas_runtime_dropin() {

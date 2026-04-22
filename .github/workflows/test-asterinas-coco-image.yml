@@ -1,0 +1,131 @@
+name: Test | Asterinas CoCo Image
+
+on:
+  schedule:
+    - cron: "0 8 * * *"
+  workflow_dispatch:
+    inputs:
+      image:
+        description: Optional image reference to test
+        required: false
+        default: ""
+        type: string
+      image_repository:
+        description: Docker image repository to test when image is not set
+        required: false
+        default: asterinas/coco
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  test-asterinas-coco-image:
+    name: Test published Asterinas CoCo image
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve Image
+        id: resolve
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WORKFLOW_IMAGE: ${{ inputs.image }}
+          WORKFLOW_IMAGE_REPOSITORY: ${{ inputs.image_repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ -n "${WORKFLOW_IMAGE}" ]; then
+            image="${WORKFLOW_IMAGE}"
+          else
+            docker_image_version="$(
+              gh api repos/asterinas/asterinas/contents/DOCKER_IMAGE_VERSION?ref=main --jq .content |
+                base64 -d | tr -d '\n'
+            )"
+            image="${WORKFLOW_IMAGE_REPOSITORY:-asterinas/coco}:${docker_image_version}"
+          fi
+
+          test -n "${image}"
+          echo "image=${image}" >> "${GITHUB_OUTPUT}"
+          echo "Testing image: \`${image}\`" >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Pull Image
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker pull "${{ steps.resolve.outputs.image }}"
+
+      - name: Start CoCo Dev Container
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          docker rm -f coco-dev >/dev/null 2>&1 || true
+          docker run -d \
+            --rm \
+            --name coco-dev \
+            --privileged \
+            --cgroupns host \
+            --device /dev/kvm \
+            --device /dev/vhost-net \
+            --device /dev/vhost-vsock \
+            --tmpfs /var/lib/containerd-nydus:rw,size=512m \
+            "${{ steps.resolve.outputs.image }}" \
+            sleep infinity
+
+      - name: Install CoCo Cluster
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker exec coco-dev /opt/coco/install-coco-cluster.sh
+
+      - name: Run CoCo Demo
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          docker exec coco-dev kubectl apply -f /opt/coco/manifests/alpine-kata-qemu-coco-dev.yaml
+          docker exec coco-dev kubectl wait \
+            --for=condition=Ready \
+            pod/alpine-kata-qemu-coco-dev \
+            --timeout=5m
+
+      - name: Verify Alpine Guest
+        id: verify
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          alpine_release_raw="$(
+            docker exec coco-dev kubectl exec alpine-kata-qemu-coco-dev -- cat /etc/alpine-release
+          )"
+          alpine_release="$(
+            printf '%s\n' "${alpine_release_raw}" | grep -Eo '[0-9]+(\.[0-9]+)+' | tail -n 1
+          )"
+          test -n "${alpine_release}"
+
+          echo "Parsed Alpine release: ${alpine_release}"
+          echo "alpine_release=${alpine_release}" >> "${GITHUB_OUTPUT}"
+          echo "Alpine release: \`${alpine_release}\`" >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Delete Demo Pod
+        if: always()
+        shell: bash
+        run: |
+          docker exec coco-dev kubectl delete pod alpine-kata-qemu-coco-dev --ignore-not-found=true --wait=true --timeout=2m || true
+
+      - name: Collect Failure Logs
+        if: failure()
+        shell: bash
+        run: |
+          docker exec coco-dev sh -lc 'echo "===== console.log ====="; tail -n 240 /tmp/console.log 2>/dev/null || true'
+          docker exec coco-dev sh -lc 'echo "===== qemu-serial.log ====="; tail -n 240 /tmp/qemu-serial.log 2>/dev/null || true'
+          docker exec coco-dev sh -lc 'echo "===== containerd.log ====="; tail -n 240 /tmp/containerd.log 2>/dev/null || true'
+
+      - name: Stop CoCo Dev Container
+        if: always()
+        shell: bash
+        run: |
+          docker rm -f coco-dev >/dev/null 2>&1 || true

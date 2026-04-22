@@ -13,7 +13,7 @@ spec:
       effect: NoSchedule
   containers:
     - name: alpine
-      image: docker.1ms.run/alpine:latest
+      image: docker.io/library/alpine:3.22
       imagePullPolicy: IfNotPresent
       command: ["/bin/sh", "-c"]
       args: ["sleep infinity"]

@@ -13,5 +13,5 @@ fi
 POD_NAME="${POD_NAME:-alpine-kata-qemu-tdx}"
 
 kubectl apply -f "${MANIFEST}"
-kubectl wait --for=condition=Ready "pod/${POD_NAME}" --timeout="${POD_WAIT_TIMEOUT:-10m}"
+kubectl wait --for=condition=Ready "pod/${POD_NAME}" --timeout="${POD_WAIT_TIMEOUT:-5m}"
 exec kubectl exec -it "${POD_NAME}" -- /bin/sh

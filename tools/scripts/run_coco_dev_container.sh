@@ -22,15 +22,22 @@ resolve_default_image() {
 }
 
 IMAGE="${IMAGE:-$(resolve_default_image)}"
+COMMAND=("$@")
+if [ "${#COMMAND[@]}" -eq 0 ]; then
+    COMMAND=(bash)
+fi
 
 docker rm -f "${NAME}" >/dev/null 2>&1 || true
 
-exec docker run -it --rm \
+exec docker run \
+    --rm \
     --name "${NAME}" \
     --privileged \
     --cgroupns host \
     --device /dev/kvm \
+    --device /dev/vhost-net \
     --device /dev/vhost-vsock \
     --tmpfs /var/lib/containerd-nydus:rw,size=512m \
+    -it \
     "${IMAGE}" \
-    bash
+    "${COMMAND[@]}"
