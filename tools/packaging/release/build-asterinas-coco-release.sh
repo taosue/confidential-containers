@@ -20,7 +20,6 @@ BUILD_ROOT="${BUILD_ROOT:-${repo_root_dir}/build/asterinas-coco-release}"
 DOWNLOAD_DIR="${BUILD_ROOT}/downloads"
 DIST_DIR="${BUILD_ROOT}/dist"
 STAGING_DIR="${BUILD_ROOT}/staging"
-EXTRACT_DIR="${BUILD_ROOT}/extract"
 ARTIFACTS_DIR="${BUILD_ROOT}/artifacts"
 
 KATA_RELEASE_URL_BASE="https://github.com/${KATA_RELEASE_REPOSITORY}/releases/download/${KATA_RELEASE_TAG}"
@@ -32,10 +31,10 @@ GUEST_COMPONENTS_REF="${GUEST_COMPONENTS_REF:-main}"
 PAUSE_IMAGE_REPOSITORY="${PAUSE_IMAGE_REPOSITORY:-docker://registry.k8s.io/pause}"
 PAUSE_IMAGE_VERSION="${PAUSE_IMAGE_VERSION:-3.10}"
 RESOLV_CONF_NAMESERVER="${RESOLV_CONF_NAMESERVER:-8.8.8.8}"
+KATA_SOURCE_DIR="${BUILD_ROOT}/src/kata-containers"
+KATA_ROOTFS_DIR="${BUILD_ROOT}/kata-rootfs"
 
 RELEASE_BASENAME="${RELEASE_BASENAME:-asterinas-coco-${VERSION}-${ARCHITECTURE}}"
-KATA_STATIC_FILE="${DOWNLOAD_DIR}/${KATA_STATIC_ASSET_NAME}"
-INITRD_FILE="${DOWNLOAD_DIR}/kata-containers-initrd.img"
 CUSTOMIZED_INITRD_FILE="${DIST_DIR}/kata-containers-initrd.img"
 RELEASE_ASSET="${DIST_DIR}/${RELEASE_BASENAME}.tar.gz"
 MANIFEST_FILE="${DIST_DIR}/${RELEASE_BASENAME}.manifest.json"
@@ -112,41 +111,6 @@ for asset in release.get("assets", []):
 	KATA_STATIC_URL="${resolved_asset_url}"
 }
 
-extract_kata_initrd() {
-	local initrd_entry="./opt/kata/share/kata-containers/kata-containers-initrd.img"
-	local initrd_target
-
-	rm -rf "${EXTRACT_DIR}"
-	mkdir -p "${EXTRACT_DIR}"
-
-	initrd_target="$(
-		tar --zstd -tvf "${KATA_STATIC_FILE}" "${initrd_entry}" |
-			awk '
-				$1 ~ /^l/ {
-					for (i = 1; i <= NF; i++) {
-						if ($i == "->") {
-							print $(i + 1)
-							exit
-						}
-					}
-				}
-			'
-	)"
-
-	if [ -n "${initrd_target}" ]; then
-		tar --zstd -xf "${KATA_STATIC_FILE}" -C "${EXTRACT_DIR}" \
-			"${initrd_entry}" \
-			"./opt/kata/share/kata-containers/${initrd_target}"
-	else
-		tar --zstd -xf "${KATA_STATIC_FILE}" -C "${EXTRACT_DIR}" \
-			"${initrd_entry}"
-	fi
-
-	install -m 0644 \
-		"${EXTRACT_DIR}/opt/kata/share/kata-containers/kata-containers-initrd.img" \
-		"${INITRD_FILE}"
-}
-
 require_cmd() {
 	local cmd
 
@@ -219,28 +183,36 @@ build_coco_guest_artifacts() {
 
 	GITHUB_OUTPUT="${guest_output_file}" \
 	BUILD_ROOT="${BUILD_ROOT}" \
+	KATA_SOURCE_DIR="${KATA_SOURCE_DIR}" \
 	GUEST_COMPONENTS_REPOSITORY="${GUEST_COMPONENTS_REPOSITORY}" \
 	GUEST_COMPONENTS_REF="${GUEST_COMPONENTS_REF}" \
 	PAUSE_IMAGE_REPOSITORY="${PAUSE_IMAGE_REPOSITORY}" \
 	PAUSE_IMAGE_VERSION="${PAUSE_IMAGE_VERSION}" \
 	"${script_dir}/build-coco-guest-artifacts.sh"
 
-	GUEST_COMPONENTS_DIR="$(sed -n 's/^guest_components_dir=//p' "${guest_output_file}" | head -n 1)"
-	PAUSE_BUNDLE_DIR="$(sed -n 's/^pause_bundle_dir=//p' "${guest_output_file}" | head -n 1)"
 	GUEST_COMPONENTS_COMMIT="$(sed -n 's/^guest_components_commit=//p' "${guest_output_file}" | head -n 1)"
+	COCO_GUEST_COMPONENTS_TARBALL="$(sed -n 's/^guest_components_tarball=//p' "${guest_output_file}" | head -n 1)"
+	PAUSE_IMAGE_TARBALL="$(sed -n 's/^pause_image_tarball=//p' "${guest_output_file}" | head -n 1)"
 
-	[ -n "${GUEST_COMPONENTS_DIR}" ] || die "failed to capture guest components directory"
-	[ -n "${PAUSE_BUNDLE_DIR}" ] || die "failed to capture pause bundle directory"
 	[ -n "${GUEST_COMPONENTS_COMMIT}" ] || die "failed to capture guest components commit"
+	[ -n "${COCO_GUEST_COMPONENTS_TARBALL}" ] || die "failed to capture guest components tarball"
+	[ -n "${PAUSE_IMAGE_TARBALL}" ] || die "failed to capture pause image tarball"
 }
 
-customize_initrd() {
-	INITRD_PATH="${INITRD_FILE}" \
+prepare_kata_source_tree() {
+	rm -rf "${KATA_SOURCE_DIR}"
+	mkdir -p "$(dirname "${KATA_SOURCE_DIR}")"
+	git clone --branch "${KATA_RELEASE_TAG}" --depth 1 "https://github.com/${KATA_RELEASE_REPOSITORY}.git" "${KATA_SOURCE_DIR}"
+}
+
+rebuild_initrd() {
+	KATA_SOURCE_DIR="${KATA_SOURCE_DIR}" \
+	ROOTFS_DIR="${KATA_ROOTFS_DIR}" \
 	OUTPUT_INITRD_PATH="${CUSTOMIZED_INITRD_FILE}" \
-	COCO_GUEST_COMPONENTS_DIR="${GUEST_COMPONENTS_DIR}" \
-	PAUSE_BUNDLE_DIR="${PAUSE_BUNDLE_DIR}" \
+	COCO_GUEST_COMPONENTS_TARBALL="${COCO_GUEST_COMPONENTS_TARBALL}" \
+	PAUSE_IMAGE_TARBALL="${PAUSE_IMAGE_TARBALL}" \
 	RESOLV_CONF_NAMESERVER="${RESOLV_CONF_NAMESERVER}" \
-	"${script_dir}/customize-initrd.sh"
+	"${script_dir}/rebuild-coco-initrd.sh"
 }
 
 stage_release_tree() {
@@ -251,19 +223,18 @@ stage_release_tree() {
 	install -m 0644 "${MANIFEST_FILE}" "${STAGING_DIR}/manifest.json"
 }
 
-require_cmd awk cargo cpio curl git gzip python3 sha256sum skopeo tar umoci zstd install
+require_cmd awk cargo curl docker git gzip python3 script sha256sum sudo tar zstd install
 
 mkdir -p "${DOWNLOAD_DIR}" "${DIST_DIR}"
+sudo chown -R "$(id -u)":"$(id -g)" "${BUILD_ROOT}" 2>/dev/null || true
 
 BUILD_TIME_UTC="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 GIT_COMMIT="$(git -C "${repo_root_dir}" rev-parse HEAD)"
 
 resolve_kata_static_asset
-KATA_STATIC_FILE="${DOWNLOAD_DIR}/${KATA_STATIC_ASSET_NAME}"
-curl --fail --location --silent --show-error "${KATA_STATIC_URL}" --output "${KATA_STATIC_FILE}"
-extract_kata_initrd
+prepare_kata_source_tree
 build_coco_guest_artifacts
-customize_initrd
+rebuild_initrd
 write_manifest
 stage_release_tree
 
@@ -287,4 +258,3 @@ emit_output "manifest_file" "${MANIFEST_FILE}"
 emit_output "checksums_file" "${CHECKSUMS_FILE}"
 emit_output "release_notes" "${RELEASE_NOTES}"
 emit_output "kata_initrd" "${CUSTOMIZED_INITRD_FILE}"
-emit_output "kata_static_asset" "${KATA_STATIC_FILE}"

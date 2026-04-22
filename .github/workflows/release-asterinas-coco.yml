@@ -47,7 +47,6 @@ jobs:
           sudo apt-get install -y \
             cargo \
             clang \
-            cpio \
             git \
             gzip \
             libcryptsetup-dev \
@@ -60,6 +59,8 @@ jobs:
             umoci \
             zstd
 
+          docker version
+
       - name: Build Release Assets
         id: bundle
         env:
@@ -67,7 +68,7 @@ jobs:
           GUEST_COMPONENTS_REPOSITORY: ${{ inputs.guest_components_repository || 'https://github.com/taosue/guest-components' }}
         run: |
           chmod +x ./tools/packaging/release/build-coco-guest-artifacts.sh
-          chmod +x ./tools/packaging/release/customize-initrd.sh
+          chmod +x ./tools/packaging/release/rebuild-coco-initrd.sh
           chmod +x ./tools/packaging/release/build-asterinas-coco-release.sh
           ./tools/packaging/release/build-asterinas-coco-release.sh
 
