@@ -8,7 +8,7 @@ metadata:
   annotations:
     io.katacontainers.config.runtime.create_container_timeout: "300"
 spec:
-  runtimeClassName: kata-qemu-coco-dev
+  runtimeClassName: kata-qemu-coco-dev-asterinas
   tolerations:
     - key: node-role.kubernetes.io/control-plane
       operator: Exists

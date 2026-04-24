@@ -364,8 +364,8 @@ kata_artifacts_ready() {
 }
 
 runtimeclass_ready() {
-    kubectl get runtimeclass kata-qemu-coco-dev >/dev/null 2>&1 && \
-    kubectl get runtimeclass kata-qemu-tdx >/dev/null 2>&1
+    kubectl get runtimeclass kata-qemu-coco-dev-asterinas >/dev/null 2>&1 && \
+    kubectl get runtimeclass kata-qemu-tdx-asterinas >/dev/null 2>&1
 }
 
 install_runtimeclasses() {
@@ -379,7 +379,7 @@ install_runtimeclasses() {
 apiVersion: node.k8s.io/v1
 kind: RuntimeClass
 metadata:
-  name: kata-qemu-coco-dev
+  name: kata-qemu-coco-dev-asterinas
 handler: kata-qemu-coco-dev
 overhead:
   podFixed:
@@ -392,7 +392,7 @@ scheduling:
 apiVersion: node.k8s.io/v1
 kind: RuntimeClass
 metadata:
-  name: kata-qemu-tdx
+  name: kata-qemu-tdx-asterinas
 handler: kata-qemu-tdx
 overhead:
   podFixed:
@@ -405,30 +405,13 @@ EOF
 
     timeout 30 bash -lc '
         while true; do
-            if kubectl get runtimeclass kata-qemu-coco-dev >/dev/null 2>&1 && \
-               kubectl get runtimeclass kata-qemu-tdx >/dev/null 2>&1; then
+            if kubectl get runtimeclass kata-qemu-coco-dev-asterinas >/dev/null 2>&1 && \
+               kubectl get runtimeclass kata-qemu-tdx-asterinas >/dev/null 2>&1; then
                 exit 0
             fi
             sleep 1
         done
     '
-}
-
-install_asterinas_runtime_dropin() {
-    local runtime
-    local src
-    local dst
-
-    for runtime in qemu-coco-dev qemu-tdx; do
-        src="${COCO_ROOT}/${runtime}-runtime-asterinas-dev.toml"
-        dst="/opt/kata/share/defaults/kata-containers/runtimes/${runtime}/config.d/95-asterinas-dev.toml"
-
-        if [ -f "${src}" ] && ! cmp -s "${src}" "${dst}" 2>/dev/null; then
-            log "installing ${runtime} asterinas-dev Kata runtime drop-in"
-            mkdir -p "$(dirname "${dst}")"
-            install -m 0644 "${src}" "${dst}"
-        fi
-    done
 }
 
 restart_containerd_stack() {
@@ -472,7 +455,6 @@ runtime_restart_needed() {
 }
 
 finalize_runtime_config() {
-    install_asterinas_runtime_dropin
     link_nydus_overlayfs
 
     write_containerd_config

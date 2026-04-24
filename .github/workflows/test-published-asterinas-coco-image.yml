@@ -92,7 +92,7 @@ jobs:
           docker exec coco-dev kubectl wait \
             --for=condition=Ready \
             pod/alpine-kata-qemu-coco-dev \
-            --timeout=5m
+            --timeout=2m
 
       - name: Verify Alpine Guest
         shell: bash
@@ -117,7 +117,7 @@ jobs:
           docker exec coco-dev kubectl delete pod alpine-kata-qemu-coco-dev --ignore-not-found=true --wait=true --timeout=2m || true
 
       - name: Collect Failure Logs
-        if: failure()
+        if: ${{ failure() || cancelled() }}
         shell: bash
         run: |
           docker exec coco-dev sh -lc 'echo "===== console.log ====="; tail -n 240 /tmp/console.log 2>/dev/null || true'

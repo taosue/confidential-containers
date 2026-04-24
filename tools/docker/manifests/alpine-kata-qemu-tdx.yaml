@@ -6,7 +6,7 @@ metadata:
   labels:
     app: alpine-kata-qemu-tdx
 spec:
-  runtimeClassName: kata-qemu-tdx
+  runtimeClassName: kata-qemu-tdx-asterinas
   tolerations:
     - key: node-role.kubernetes.io/control-plane
       operator: Exists

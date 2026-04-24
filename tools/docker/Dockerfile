@@ -192,22 +192,10 @@ COPY tools/scripts /opt/coco/scripts
 COPY --from=fetch-release-assets /out/prebuilt/. /opt/coco/prebuilt/asterinas-coco/
 COPY --from=fetch-release-assets /out/metadata/. /opt/coco/metadata/
 
-RUN install -m 0644 /opt/coco/config/qemu-coco-dev-runtime-minimal.toml \
-        /opt/kata/share/defaults/kata-containers/runtimes/qemu-coco-dev/config.d/90-runtime-minimal.toml && \
-    install -m 0644 /opt/coco/config/configuration-qemu-coco-dev.toml \
-        /opt/kata/share/defaults/kata-containers/runtimes/qemu-coco-dev/configuration-qemu-coco-dev.toml && \
-    install -m 0644 /opt/coco/config/qemu-coco-dev-runtime-asterinas-dev.toml \
-        /opt/kata/share/defaults/kata-containers/runtimes/qemu-coco-dev/config.d/95-asterinas-dev.toml && \
-    install -m 0644 /opt/coco/config/qemu-coco-dev-runtime-asterinas-dev.toml \
-        /opt/coco/qemu-coco-dev-runtime-asterinas-dev.toml && \
-    install -m 0644 /opt/coco/config/qemu-tdx-runtime-minimal.toml \
-        /opt/kata/share/defaults/kata-containers/runtimes/qemu-tdx/config.d/90-runtime-minimal.toml && \
-    install -m 0644 /opt/coco/config/configuration-qemu-tdx.toml \
-        /opt/kata/share/defaults/kata-containers/runtimes/qemu-tdx/configuration-qemu-tdx.toml && \
-    install -m 0644 /opt/coco/config/qemu-tdx-runtime-asterinas.toml \
-        /opt/kata/share/defaults/kata-containers/runtimes/qemu-tdx/config.d/95-asterinas-dev.toml && \
-    install -m 0644 /opt/coco/config/qemu-tdx-runtime-asterinas.toml \
-        /opt/coco/qemu-tdx-runtime-asterinas.toml && \
+RUN install -m 0644 /opt/coco/config/configuration-qemu-coco-dev-asterinas.toml \
+        /opt/kata/share/defaults/kata-containers/runtimes/qemu-coco-dev/configuration-qemu-coco-dev-asterinas.toml && \
+    install -m 0644 /opt/coco/config/configuration-qemu-tdx-asterinas.toml \
+        /opt/kata/share/defaults/kata-containers/runtimes/qemu-tdx/configuration-qemu-tdx-asterinas.toml && \
     install -m 0644 /opt/coco/config/containerd-coco-guest-pull.toml \
         /etc/containerd/conf.d/50-coco-guest-pull.toml && \
     install -m 0644 /opt/coco/config/confidential-containers-values.yaml \

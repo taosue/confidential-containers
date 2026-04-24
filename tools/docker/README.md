@@ -83,7 +83,7 @@ drops you into `/bin/sh` inside the Pod.
 
 The image already contains:
 
-- Kata runtime override: `/opt/kata/share/defaults/kata-containers/runtimes/qemu-coco-dev/config.d/90-runtime-minimal.toml`
+- Kata runtime config: `/opt/kata/share/defaults/kata-containers/runtimes/qemu-coco-dev/configuration-qemu-coco-dev-asterinas.toml`
 - Containerd guest-pull config: `/etc/containerd/conf.d/50-coco-guest-pull.toml`
 - Helm values: `/opt/coco/confidential-containers-values.yaml`
 - Prebuilt OCI archives for kubeadm images and `kata-deploy` under `/opt/coco/cache/`

@@ -21,7 +21,7 @@ pod_annotations = ["io.katacontainers.*"]
 snapshotter = "nydus"
 
 [plugins."io.containerd.cri.v1.runtime".containerd.runtimes.kata-qemu-coco-dev.options]
-ConfigPath = "/opt/kata/share/defaults/kata-containers/runtimes/qemu-coco-dev/configuration-qemu-coco-dev.toml"
+ConfigPath = "/opt/kata/share/defaults/kata-containers/runtimes/qemu-coco-dev/configuration-qemu-coco-dev-asterinas.toml"
 
 [plugins."io.containerd.cri.v1.images".runtime_platforms.kata-qemu-coco-dev]
 snapshotter = "nydus"
@@ -34,7 +34,7 @@ pod_annotations = ["io.katacontainers.*"]
 snapshotter = "nydus"
 
 [plugins."io.containerd.cri.v1.runtime".containerd.runtimes.kata-qemu-tdx.options]
-ConfigPath = "/opt/kata/share/defaults/kata-containers/runtimes/qemu-tdx/configuration-qemu-tdx.toml"
+ConfigPath = "/opt/kata/share/defaults/kata-containers/runtimes/qemu-tdx/configuration-qemu-tdx-asterinas.toml"
 
 [plugins."io.containerd.cri.v1.images".runtime_platforms.kata-qemu-tdx]
 snapshotter = "nydus"
