@@ -49,7 +49,7 @@ resolve_guest_components_commit() {
 		return 0
 	fi
 
-	ls_remote_output="$(git ls-remote "${GUEST_COMPONENTS_REPOSITORY}" "refs/heads/${GUEST_COMPONENTS_REF}")"
+	ls_remote_output="$(git ls-remote "${GUEST_COMPONENTS_REPOSITORY}" "${GUEST_COMPONENTS_REF}" "refs/tags/${GUEST_COMPONENTS_REF}" "refs/heads/${GUEST_COMPONENTS_REF}")"
 	GUEST_COMPONENTS_COMMIT="${ls_remote_output%%$'\t'*}"
 	[ -n "${GUEST_COMPONENTS_COMMIT}" ] || die "failed to resolve ${GUEST_COMPONENTS_REPOSITORY}@${GUEST_COMPONENTS_REF}"
 }

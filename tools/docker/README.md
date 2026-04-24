@@ -15,13 +15,13 @@ Layout:
 This image follows the `kata-jianfeng` publish-image style:
 
 - the base image comes from `asterinas/asterinas:<DOCKER_IMAGE_VERSION>`
-- the prebuilt Asterinas Kata artifacts come from a `jjf-dev/kata-containers` release package
+- the prebuilt Asterinas Kata artifacts come from an `asterinas/kata-containers` release package
 - the customized CoCo initrd comes from a `confidential-containers` release package
 
 The image bakes in:
 
 - `/opt/coco/prebuilt/asterinas-coco/aster-kernel-osdk-bin.qemu_elf`
-- `/opt/coco/prebuilt/asterinas-coco/aster-kernel-osdk-bin.qemu_elf-tdx`
+- `/opt/coco/prebuilt/asterinas-coco/aster-kernel-osdk-bin-tdx`
 - `/opt/coco/prebuilt/asterinas-coco/containerd-shim-kata-v2`
 - `/opt/coco/prebuilt/asterinas-coco/kata-containers-initrd.img`
 

@@ -29,10 +29,10 @@ RUN set -euo pipefail && \
       ./opt/kata/bin/containerd-shim-kata-v2 \
       ./opt/kata/bin/qemu-system-x86_64 \
       ./opt/kata/share/kata-containers/aster-kernel-osdk-bin.qemu_elf \
-      ./opt/kata/share/kata-containers/aster-kernel-osdk-bin.qemu_elf-tdx && \
+      ./opt/kata/share/kata-containers/aster-kernel-osdk-bin-tdx && \
     install -m 0755 /tmp/kata/opt/kata/bin/containerd-shim-kata-v2 /out/prebuilt/containerd-shim-kata-v2 && \
     install -m 0755 /tmp/kata/opt/kata/share/kata-containers/aster-kernel-osdk-bin.qemu_elf /out/prebuilt/aster-kernel-osdk-bin.qemu_elf && \
-    install -m 0755 /tmp/kata/opt/kata/share/kata-containers/aster-kernel-osdk-bin.qemu_elf-tdx /out/prebuilt/aster-kernel-osdk-bin.qemu_elf-tdx && \
+    install -m 0755 /tmp/kata/opt/kata/share/kata-containers/aster-kernel-osdk-bin-tdx /out/prebuilt/aster-kernel-osdk-bin-tdx && \
     local_coco_release_archive="$(find /tmp/local-coco-release -maxdepth 1 -type f -name '*.tar.gz' | head -n 1 || true)" && \
     if [ -n "${local_coco_release_archive}" ]; then \
       cp "${local_coco_release_archive}" /tmp/coco-release.tar.gz; \
@@ -210,7 +210,7 @@ RUN install -m 0644 /opt/coco/config/configuration-qemu-coco-dev-asterinas.toml 
     chmod 0755 \
         /opt/coco/prebuilt/asterinas-coco/containerd-shim-kata-v2 \
         /opt/coco/prebuilt/asterinas-coco/aster-kernel-osdk-bin.qemu_elf \
-        /opt/coco/prebuilt/asterinas-coco/aster-kernel-osdk-bin.qemu_elf-tdx && \
+        /opt/coco/prebuilt/asterinas-coco/aster-kernel-osdk-bin-tdx && \
     chmod 0644 /opt/coco/prebuilt/asterinas-coco/kata-containers-initrd.img
 
 RUN printf '%s\n' "${UPSTREAM_ASTERINAS_RELEASE_VERSION}" > /opt/coco/metadata/asterinas-version && \
