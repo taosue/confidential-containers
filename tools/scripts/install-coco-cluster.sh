@@ -3,11 +3,7 @@ set -euo pipefail
 
 COCO_ROOT="${COCO_ROOT:-/opt/coco}"
 
-# CoCo chart release to install:
-# https://github.com/confidential-containers/charts/tree/main/charts/confidential-containers
-CHART_VERSION="${CHART_VERSION:-0.19.0}"
 POD_CIDR="${POD_CIDR:-10.244.0.0/16}"
-KATA_DEPLOY_WAIT_TIMEOUT="${KATA_DEPLOY_WAIT_TIMEOUT:-300}"
 KUBERNETES_VERSION="${KUBERNETES_VERSION:-}"
 KUBEADM_IMAGE_LIST_CMD="${KUBEADM_IMAGE_LIST_CMD:-}"
 UNPACK_KUBEADM_IMAGES="${UNPACK_KUBEADM_IMAGES:-false}"
@@ -23,7 +19,7 @@ log() {
 }
 
 require_prereqs() {
-    for bin in helm kubeadm kubelet kubectl containerd ctr modprobe socat; do
+    for bin in kubeadm kubelet kubectl containerd ctr modprobe socat; do
         if ! command -v "${bin}" >/dev/null 2>&1; then
             echo "missing required binary: ${bin}" >&2
             exit 1
@@ -223,10 +219,7 @@ image_archive_name() {
 
 ensure_preloaded_images() {
     local imported_kubeadm=0
-    local imported_chart=0
     local unpack_marker
-    local kata_deploy_image="quay.io/kata-containers/kata-deploy:3.28.0"
-    local kata_deploy_unpack_marker
 
     for image in "${KUBEADM_IMAGES[@]}"; do
         local archive="${COCO_ROOT}/cache/kubeadm-images/$(image_archive_name "${image}").tar"
@@ -258,46 +251,6 @@ ensure_preloaded_images() {
         fi
     else
         log "skipping kubeadm image native unpack"
-    fi
-
-    local kata_deploy_archive="${COCO_ROOT}/cache/kata-deploy/kata-deploy-amd64.tar"
-    if [ -f "${kata_deploy_archive}" ] && ! image_exists "${kata_deploy_image}"; then
-        log "importing cached kata-deploy image (this can take several minutes)"
-        if ! ctr -n k8s.io images import --local --all-platforms --no-unpack "${kata_deploy_archive}" >/tmp/ctr-import-kata-deploy.log 2>&1; then
-            echo "failed to import cached kata-deploy image" >&2
-            echo "===== ctr-import-kata-deploy.log =====" >&2
-            tail -n 240 /tmp/ctr-import-kata-deploy.log >&2 2>/dev/null || true
-            return 1
-        fi
-    fi
-
-    local kata_deploy_digest
-    kata_deploy_digest="$(ctr -n k8s.io images ls | awk -v ref="${kata_deploy_image}" '$1 == ref {print $3; exit}')"
-    kata_deploy_unpack_marker="/var/lib/containerd/.coco-kata-deploy-native-unpack.${kata_deploy_digest:-missing}"
-    if [ -n "${kata_deploy_digest}" ] && [ ! -f "${kata_deploy_unpack_marker}" ]; then
-        mount_tmpfs_once /var/lib/containerd/tmpmounts 512m
-        if ! ctr -n k8s.io snapshots unpack --snapshotter native "${kata_deploy_digest}" >/tmp/ctr-unpack-kata-deploy.log 2>&1; then
-            echo "failed to unpack kata-deploy image with native snapshotter" >&2
-            echo "===== ctr-unpack-kata-deploy.log =====" >&2
-            tail -n 240 /tmp/ctr-unpack-kata-deploy.log >&2 2>/dev/null || true
-            return 1
-        fi
-        touch "${kata_deploy_unpack_marker}"
-    fi
-
-    local chart_image="quay.io/kata-containers/kubectl:20260112"
-    local chart_archive="${COCO_ROOT}/cache/chart-images/$(image_archive_name "${chart_image}").tar"
-    if [ -f "${chart_archive}" ] && ! image_exists "${chart_image}"; then
-        if [ "${imported_chart}" = "0" ]; then
-            log "importing cached chart images"
-            imported_chart=1
-        fi
-        if ! ctr -n k8s.io images import --local --all-platforms --no-unpack "${chart_archive}" >/tmp/ctr-import-chart-images.log 2>&1; then
-            echo "failed to import cached chart image: ${chart_image}" >&2
-            echo "===== ctr-import-chart-images.log =====" >&2
-            tail -n 240 /tmp/ctr-import-chart-images.log >&2 2>/dev/null || true
-            return 1
-        fi
     fi
 }
 
@@ -384,6 +337,19 @@ init_kubernetes() {
     fi
 }
 
+wait_for_cluster_basics() {
+    log "waiting for cluster basic resources"
+
+    timeout 60 bash -lc '
+        while true; do
+            if kubectl get serviceaccount default -n default >/dev/null 2>&1; then
+                exit 0
+            fi
+            sleep 1
+        done
+    '
+}
+
 label_node_for_kata() {
     local node_name
 
@@ -393,13 +359,8 @@ label_node_for_kata() {
 }
 
 kata_artifacts_ready() {
-    [ -f /opt/kata/containerd/config.d/kata-deploy.toml ] && \
     [ -x /opt/kata/nydus-snapshotter/containerd-nydus-grpc ] && \
     [ -x /opt/kata/nydus-snapshotter/nydus-overlayfs ]
-}
-
-helm_release_ready() {
-    helm status coco -n coco-system >/dev/null 2>&1
 }
 
 runtimeclass_ready() {
@@ -407,56 +368,50 @@ runtimeclass_ready() {
     kubectl get runtimeclass kata-qemu-tdx >/dev/null 2>&1
 }
 
-install_confidential_containers() {
-    if helm_release_ready && kata_artifacts_ready && runtimeclass_ready; then
-        log "confidential-containers already installed, skipping Helm install"
+install_runtimeclasses() {
+    if runtimeclass_ready; then
+        log "kata runtimeclasses already installed, skipping"
         return
     fi
 
-    log "installing confidential-containers Helm chart"
-    helm upgrade --install coco \
-        oci://ghcr.io/confidential-containers/charts/confidential-containers \
-        --version "${CHART_VERSION}" \
-        -n coco-system \
-        --create-namespace \
-        -f "${COCO_ROOT}/confidential-containers-values.yaml"
+    log "installing kata runtimeclasses"
+    kubectl apply -f - <<'EOF'
+apiVersion: node.k8s.io/v1
+kind: RuntimeClass
+metadata:
+  name: kata-qemu-coco-dev
+handler: kata-qemu-coco-dev
+overhead:
+  podFixed:
+    memory: "160Mi"
+    cpu: "250m"
+scheduling:
+  nodeSelector:
+    katacontainers.io/kata-runtime: "true"
+---
+apiVersion: node.k8s.io/v1
+kind: RuntimeClass
+metadata:
+  name: kata-qemu-tdx
+handler: kata-qemu-tdx
+overhead:
+  podFixed:
+    memory: "2048Mi"
+    cpu: "1.0"
+scheduling:
+  nodeSelector:
+    katacontainers.io/kata-runtime: "true"
+EOF
 
-    log "waiting for kata-deploy artifacts on host"
-    if ! timeout "${KATA_DEPLOY_WAIT_TIMEOUT}" bash -lc '
-        while true; do
-            if [ -f /opt/kata/containerd/config.d/kata-deploy.toml ] && \
-               [ -x /opt/kata/nydus-snapshotter/containerd-nydus-grpc ] && \
-               [ -x /opt/kata/nydus-snapshotter/nydus-overlayfs ]; then
-                exit 0
-            fi
-            sleep 2
-        done
-    '; then
-        kubectl get pods -n coco-system -o wide >&2 2>/dev/null || true
-        kubectl get daemonset -n coco-system >&2 2>/dev/null || true
-        exit 1
-    fi
-
-    log "waiting for kata runtimeclasses"
-    timeout 120 bash -lc '
+    timeout 30 bash -lc '
         while true; do
             if kubectl get runtimeclass kata-qemu-coco-dev >/dev/null 2>&1 && \
                kubectl get runtimeclass kata-qemu-tdx >/dev/null 2>&1; then
                 exit 0
             fi
-            sleep 2
+            sleep 1
         done
-    ' || true
-
-    # The daemonset keeps rerunning `kata-deploy install`, which copies the
-    # large Kata guest artifacts into fresh native snapshots on every restart.
-    # Once the host artifacts and runtimeclasses exist, stop it to avoid
-    # exhausting /var/lib/containerd during later demo runs.
-    if kata_artifacts_ready && runtimeclass_ready; then
-        log "stopping kata-deploy daemonset after host artifacts are ready"
-        kubectl delete daemonset -n coco-system kata-as-coco-runtime --ignore-not-found=true >/dev/null 2>&1 || true
-        kubectl wait --for=delete pod -n coco-system -l name=kata-as-coco-runtime --timeout=2m >/dev/null 2>&1 || true
-    fi
+    '
 }
 
 install_asterinas_runtime_dropin() {
@@ -520,9 +475,6 @@ finalize_runtime_config() {
     install_asterinas_runtime_dropin
     link_nydus_overlayfs
 
-    # kata-deploy creates its containerd drop-in during Helm install. Regenerate
-    # imports now so kata-deploy is loaded first and our guest-pull override is
-    # loaded last.
     write_containerd_config
 
     if runtime_restart_needed; then
@@ -542,8 +494,9 @@ main() {
     ensure_preloaded_images
 
     init_kubernetes
+    wait_for_cluster_basics
     label_node_for_kata
-    install_confidential_containers
+    install_runtimeclasses
     finalize_runtime_config
 }
 

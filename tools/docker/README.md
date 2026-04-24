@@ -30,7 +30,7 @@ From this directory:
 ```bash
 cd tools/docker
 DOCKER_BUILDKIT=1 docker build --progress=plain \
-    --build-arg ASTERINAS_BASE_IMAGE=asterinas/asterinas:<DOCKER_IMAGE_VERSION> \
+    --build-arg UPSTREAM_ASTERINAS_BASE_IMAGE=asterinas/asterinas:<DOCKER_IMAGE_VERSION> \
     --build-arg KATA_RELEASE_PACKAGE_URL=<jjf-dev-kata-release-package-url> \
     --build-arg COCO_RELEASE_PACKAGE_URL=<confidential-containers-release-package-url> \
     -t asterinas/coco:<DOCKER_IMAGE_VERSION> \

@@ -54,6 +54,7 @@ ARG HELM_VERSION=3.20.0
 ARG K8S_VERSION=1.30.14
 ARG CRICTL_VERSION=1.30.0
 ARG CNI_PLUGINS_VERSION=1.6.2
+ARG NYDUS_SNAPSHOTTER_VERSION=v0.15.10
 ARG UPSTREAM_ASTERINAS_RELEASE_VERSION=
 ARG UPSTREAM_ASTERINAS_DOCKER_IMAGE_VERSION=
 ARG COCO_RELEASE_VERSION=
@@ -78,7 +79,8 @@ RUN apt update && apt-get install -y --no-install-recommends \
     kmod \
     python3 \
     skopeo \
-    socat && \
+    socat \
+    virtiofsd && \
     apt clean && rm -rf /var/lib/apt/lists/*
 
 RUN install -d /usr/local/bin /opt/cni/bin
@@ -104,10 +106,18 @@ RUN set -euo pipefail && \
     curl "${curl_common[@]}" \
       -o /tmp/cni.tgz "https://github.com/containernetworking/plugins/releases/download/v${CNI_PLUGINS_VERSION}/cni-plugins-linux-${arch}-v${CNI_PLUGINS_VERSION}.tgz" && \
     tar -xz -C /opt/cni/bin -f /tmp/cni.tgz && \
-    rm -f /tmp/cni.tgz
+    rm -f /tmp/cni.tgz && \
+    install -d /opt/kata/nydus-snapshotter /tmp/nydus-snapshotter && \
+    curl "${curl_common[@]}" \
+      -o /tmp/nydus-snapshotter.tgz "https://github.com/containerd/nydus-snapshotter/releases/download/${NYDUS_SNAPSHOTTER_VERSION}/nydus-snapshotter-${NYDUS_SNAPSHOTTER_VERSION}-linux-${arch}.tar.gz" && \
+    tar -xz -C /tmp/nydus-snapshotter -f /tmp/nydus-snapshotter.tgz && \
+    install -m 0755 "$(find /tmp/nydus-snapshotter -type f -name containerd-nydus-grpc | head -n 1)" /opt/kata/nydus-snapshotter/containerd-nydus-grpc && \
+    install -m 0755 "$(find /tmp/nydus-snapshotter -type f -name nydus-overlayfs | head -n 1)" /opt/kata/nydus-snapshotter/nydus-overlayfs && \
+    rm -rf /tmp/nydus-snapshotter /tmp/nydus-snapshotter.tgz
 
 RUN chmod 0755 /usr/local/bin/helm /usr/local/bin/kubeadm /usr/local/bin/kubelet /usr/local/bin/kubectl /usr/local/bin/crictl && \
-    find /opt/cni/bin -type f -exec chmod 0755 {} +
+    find /opt/cni/bin -type f -exec chmod 0755 {} + && \
+    chmod 0755 /opt/kata/nydus-snapshotter/containerd-nydus-grpc /opt/kata/nydus-snapshotter/nydus-overlayfs
 
 RUN install -d /opt/coco/cache/kubeadm-images \
     /opt/coco/cache/kata-deploy \
@@ -184,12 +194,16 @@ COPY --from=fetch-release-assets /out/metadata/. /opt/coco/metadata/
 
 RUN install -m 0644 /opt/coco/config/qemu-coco-dev-runtime-minimal.toml \
         /opt/kata/share/defaults/kata-containers/runtimes/qemu-coco-dev/config.d/90-runtime-minimal.toml && \
+    install -m 0644 /opt/coco/config/configuration-qemu-coco-dev.toml \
+        /opt/kata/share/defaults/kata-containers/runtimes/qemu-coco-dev/configuration-qemu-coco-dev.toml && \
     install -m 0644 /opt/coco/config/qemu-coco-dev-runtime-asterinas-dev.toml \
         /opt/kata/share/defaults/kata-containers/runtimes/qemu-coco-dev/config.d/95-asterinas-dev.toml && \
     install -m 0644 /opt/coco/config/qemu-coco-dev-runtime-asterinas-dev.toml \
         /opt/coco/qemu-coco-dev-runtime-asterinas-dev.toml && \
     install -m 0644 /opt/coco/config/qemu-tdx-runtime-minimal.toml \
         /opt/kata/share/defaults/kata-containers/runtimes/qemu-tdx/config.d/90-runtime-minimal.toml && \
+    install -m 0644 /opt/coco/config/configuration-qemu-tdx.toml \
+        /opt/kata/share/defaults/kata-containers/runtimes/qemu-tdx/configuration-qemu-tdx.toml && \
     install -m 0644 /opt/coco/config/qemu-tdx-runtime-asterinas.toml \
         /opt/kata/share/defaults/kata-containers/runtimes/qemu-tdx/config.d/95-asterinas-dev.toml && \
     install -m 0644 /opt/coco/config/qemu-tdx-runtime-asterinas.toml \
