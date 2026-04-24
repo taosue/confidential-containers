@@ -13,7 +13,7 @@
 
 [hypervisor.qemu]
 path = "/usr/local/qemu/bin/qemu-system-x86_64"
-kernel = "/opt/coco/prebuilt/asterinas-coco/aster-kernel-osdk-bin.qemu_elf-tdx"
+kernel = "/opt/coco/prebuilt/asterinas-coco/aster-kernel-osdk-bin-tdx"
 initrd = "/opt/coco/prebuilt/asterinas-coco/kata-containers-initrd.img"
 image = ""
 machine_type = "q35"
