@@ -159,37 +159,36 @@ jobs:
           set -euo pipefail
           cp "${{ steps.local-release.outputs.release_asset }}" /tmp/docker-build-contexts/local_coco_release/
 
-      - name: Set Up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
       - name: Build Local Image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: tools/docker/Dockerfile
-          build-contexts: |
-            local_coco_release=/tmp/docker-build-contexts/local_coco_release
-          platforms: linux/amd64
-          load: true
-          push: false
-          provenance: false
-          tags: |
-            ${{ steps.resolve.outputs.image }}
-          labels: |
-            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
-            org.opencontainers.image.description=Asterinas CoCo development image with prebuilt Asterinas Kata artifacts
-            org.opencontainers.image.version=${{ steps.resolve.outputs.upstream_asterinas_docker_image_version }}
-            org.opencontainers.image.base.name=asterinas/asterinas:${{ steps.resolve.outputs.upstream_asterinas_docker_image_version }}
-            io.asterinas.version=${{ steps.resolve.outputs.upstream_asterinas_release_version }}
-            io.confidential-containers.version=${{ steps.resolve.outputs.coco_release_version }}
-          build-args: |
-            UPSTREAM_ASTERINAS_BASE_IMAGE=asterinas/asterinas:${{ steps.resolve.outputs.upstream_asterinas_docker_image_version }}
-            UPSTREAM_ASTERINAS_RELEASE_VERSION=${{ steps.resolve.outputs.upstream_asterinas_release_version }}
-            UPSTREAM_ASTERINAS_DOCKER_IMAGE_VERSION=${{ steps.resolve.outputs.upstream_asterinas_docker_image_version }}
-            COCO_RELEASE_VERSION=${{ steps.resolve.outputs.coco_release_version }}
-            KATA_RELEASE_TAG=${{ steps.resolve.outputs.kata_release_tag }}
-            KATA_RELEASE_PACKAGE_URL=${{ steps.resolve.outputs.kata_release_package_url }}
-            COCO_RELEASE_PACKAGE_URL=${{ steps.resolve.outputs.coco_release_package_url }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          DOCKER_BUILDKIT=1 docker build \
+            --file tools/docker/Dockerfile \
+            --tag "${{ steps.resolve.outputs.image }}" \
+            --build-context local_coco_release=/tmp/docker-build-contexts/local_coco_release \
+            --label "org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}" \
+            --label "org.opencontainers.image.description=Asterinas CoCo development image with prebuilt Asterinas Kata artifacts" \
+            --label "org.opencontainers.image.version=${{ steps.resolve.outputs.upstream_asterinas_docker_image_version }}" \
+            --label "org.opencontainers.image.base.name=asterinas/asterinas:${{ steps.resolve.outputs.upstream_asterinas_docker_image_version }}" \
+            --label "io.asterinas.version=${{ steps.resolve.outputs.upstream_asterinas_release_version }}" \
+            --label "io.confidential-containers.version=${{ steps.resolve.outputs.coco_release_version }}" \
+            --build-arg "UPSTREAM_ASTERINAS_BASE_IMAGE=asterinas/asterinas:${{ steps.resolve.outputs.upstream_asterinas_docker_image_version }}" \
+            --build-arg "UPSTREAM_ASTERINAS_RELEASE_VERSION=${{ steps.resolve.outputs.upstream_asterinas_release_version }}" \
+            --build-arg "UPSTREAM_ASTERINAS_DOCKER_IMAGE_VERSION=${{ steps.resolve.outputs.upstream_asterinas_docker_image_version }}" \
+            --build-arg "COCO_RELEASE_VERSION=${{ steps.resolve.outputs.coco_release_version }}" \
+            --build-arg "KATA_RELEASE_TAG=${{ steps.resolve.outputs.kata_release_tag }}" \
+            --build-arg "KATA_RELEASE_PACKAGE_URL=${{ steps.resolve.outputs.kata_release_package_url }}" \
+            --build-arg "COCO_RELEASE_PACKAGE_URL=${{ steps.resolve.outputs.coco_release_package_url }}" \
+            .
+
+      - name: Prune Docker Build Cache
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker builder prune -af || true
+          docker buildx prune -af || true
 
       - name: Verify Local Image Metadata
         shell: bash
