@@ -17,21 +17,6 @@ on:
         required: true
         default: true
         type: boolean
-      kata_release_repository:
-        description: Repository that hosts the Kata release assets
-        required: true
-        default: jjf-dev/kata-containers
-        type: string
-      guest_components_repository:
-        description: Repository that hosts CoCo guest-components
-        required: true
-        default: https://github.com/taosue/guest-components
-        type: string
-      image_repository:
-        description: Docker Hub repository to publish
-        required: false
-        default: asterinas/coco
-        type: string
       push_image:
         description: Push the Docker image when Docker Hub credentials are available
         required: true
@@ -73,9 +58,6 @@ jobs:
 
       - name: Build Release Assets
         id: bundle
-        env:
-          KATA_RELEASE_REPOSITORY: ${{ inputs.kata_release_repository || 'jjf-dev/kata-containers' }}
-          GUEST_COMPONENTS_REPOSITORY: ${{ inputs.guest_components_repository || 'https://github.com/taosue/guest-components' }}
         run: |
           chmod +x ./tools/packaging/release/build-coco-guest-artifacts.sh
           chmod +x ./tools/packaging/release/rebuild-coco-initrd.sh
@@ -170,10 +152,8 @@ jobs:
     name: Build and optionally push Asterinas CoCo image
     needs: build-release
     if: ${{ github.event_name == 'push' || inputs.draft_release == false }}
-    uses: ./.github/workflows/build-asterinas-coco-image.yml
+    uses: ./.github/workflows/publish-asterinas-coco-image.yml
     with:
-      image_repository: ${{ inputs.image_repository || 'asterinas/coco' }}
-      kata_release_repository: ${{ inputs.kata_release_repository || 'jjf-dev/kata-containers' }}
       push_image: ${{ github.event_name == 'push' || inputs.push_image }}
     secrets: inherit
 
@@ -181,6 +161,4 @@ jobs:
     name: Test published Asterinas CoCo image
     needs: publish-image
     if: ${{ github.event_name == 'push' || (inputs.draft_release == false && inputs.push_image) }}
-    uses: ./.github/workflows/test-asterinas-coco-image.yml
-    with:
-      image_repository: ${{ inputs.image_repository || 'asterinas/coco' }}
+    uses: ./.github/workflows/test-published-asterinas-coco-image.yml

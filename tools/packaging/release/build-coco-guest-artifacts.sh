@@ -9,17 +9,14 @@ set -o pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root_dir="$(cd "${script_dir}/../../../" && pwd)"
+source "${repo_root_dir}/tools/scripts/asterinas-coco-defaults.sh"
 
 BUILD_ROOT="${BUILD_ROOT:-${repo_root_dir}/build/asterinas-coco-release}"
 KATA_SOURCE_DIR="${KATA_SOURCE_DIR:?KATA_SOURCE_DIR must be set}"
 WORK_DIR="${GUEST_ARTIFACTS_WORK_DIR:-${KATA_SOURCE_DIR}/build/asterinas-coco-guest-artifacts}"
 OUT_DIR="${WORK_DIR}/out"
 
-GUEST_COMPONENTS_REPOSITORY="${GUEST_COMPONENTS_REPOSITORY:-https://github.com/taosue/guest-components}"
-GUEST_COMPONENTS_REF="${GUEST_COMPONENTS_REF:-main}"
 GUEST_COMPONENTS_COMMIT="${GUEST_COMPONENTS_COMMIT:-}"
-PAUSE_IMAGE_REPOSITORY="${PAUSE_IMAGE_REPOSITORY:-docker://registry.k8s.io/pause}"
-PAUSE_IMAGE_VERSION="${PAUSE_IMAGE_VERSION:-3.10}"
 
 GUEST_COMPONENTS_DIR="${OUT_DIR}/guest-components"
 PAUSE_BUNDLE_DIR="${OUT_DIR}/pause/pause_bundle"

@@ -7,12 +7,15 @@ set -o errexit
 set -o nounset
 set -o pipefail
 
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+repo_root_dir="$(cd "${script_dir}/../../../" && pwd)"
+source "${repo_root_dir}/tools/scripts/asterinas-coco-defaults.sh"
+
 KATA_SOURCE_DIR="${KATA_SOURCE_DIR:?KATA_SOURCE_DIR must be set}"
 ROOTFS_DIR="${ROOTFS_DIR:?ROOTFS_DIR must be set}"
 OUTPUT_INITRD_PATH="${OUTPUT_INITRD_PATH:?OUTPUT_INITRD_PATH must be set}"
 COCO_GUEST_COMPONENTS_TARBALL="${COCO_GUEST_COMPONENTS_TARBALL:?COCO_GUEST_COMPONENTS_TARBALL must be set}"
 PAUSE_IMAGE_TARBALL="${PAUSE_IMAGE_TARBALL:?PAUSE_IMAGE_TARBALL must be set}"
-RESOLV_CONF_NAMESERVER="${RESOLV_CONF_NAMESERVER:-8.8.8.8}"
 DISTRO="${DISTRO:-ubuntu}"
 OS_VERSION="${OS_VERSION:-noble}"
 

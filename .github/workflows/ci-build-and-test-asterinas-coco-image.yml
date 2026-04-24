@@ -1,0 +1,261 @@
+name: CI | Build And Test Asterinas CoCo Image
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/publish-asterinas-coco-image.yml
+      - .github/workflows/test-published-asterinas-coco-image.yml
+      - .github/workflows/ci-build-and-test-asterinas-coco-image.yml
+      - tools/docker/**
+      - tools/packaging/**
+      - tools/scripts/**
+      - VERSION
+      - KATA_VERSION
+  workflow_dispatch:
+    inputs:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test-image:
+    name: Build and test Asterinas CoCo image
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check Out Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect Local Release Asset Requirement
+        id: changes
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+
+          should_build_local_release=false
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            changed_files="$(
+              git diff --name-only "${BASE_SHA}" "${HEAD_SHA}"
+            )"
+            if printf '%s\n' "${changed_files}" | grep -Eq '^(VERSION|KATA_VERSION|tools/packaging/)'; then
+              should_build_local_release=true
+            fi
+          fi
+
+          echo "should_build_local_release=${should_build_local_release}" >> "${GITHUB_OUTPUT}"
+
+      - name: Resolve Build Inputs
+        id: resolve
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          source ./tools/scripts/asterinas-coco-defaults.sh
+          upstream_asterinas_release_version="$(
+            gh api repos/asterinas/asterinas/contents/VERSION?ref=main --jq .content |
+              base64 -d | tr -d '\n'
+          )"
+          upstream_asterinas_docker_image_version="$(
+            gh api repos/asterinas/asterinas/contents/DOCKER_IMAGE_VERSION?ref=main --jq .content |
+              base64 -d | tr -d '\n'
+          )"
+          coco_release_version="$(<VERSION)"
+          kata_release_version="$(<KATA_VERSION)"
+          image_repository="${IMAGE_REPOSITORY}"
+          image_tag="${upstream_asterinas_docker_image_version}"
+          image="${image_repository}:${image_tag}"
+          kata_release_repository="${KATA_RELEASE_REPOSITORY}"
+          kata_release_tag="${KATA_RELEASE_TAG}"
+          kata_release_package_url=""
+          coco_release_package_url=""
+
+          if [ -z "${kata_release_package_url}" ]; then
+            release_json="$(mktemp)"
+            gh api "repos/${kata_release_repository}/releases/tags/${kata_release_tag}" > "${release_json}"
+            kata_release_package_url="$(
+              python3 -c 'import json,sys; release=json.load(open(sys.argv[1], "r", encoding="utf-8")); print(next((asset.get("browser_download_url", "") for asset in release.get("assets", []) if asset.get("name", "").endswith(".tar.zst") and "asterinas" in asset.get("name", "") and "amd64" in asset.get("name", "")), ""))' "${release_json}"
+            )"
+            rm -f "${release_json}"
+          fi
+
+          if [ -z "${coco_release_package_url}" ]; then
+            coco_release_tag="${COCO_RELEASE_TAG}"
+            coco_release_package_url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${coco_release_tag}/asterinas-coco-${coco_release_version}-amd64.tar.gz"
+          fi
+
+          test -n "${image}"
+          test -n "${kata_release_tag}"
+          test -n "${kata_release_package_url}"
+          test -n "${coco_release_package_url}"
+
+          echo "image=${image}" >> "${GITHUB_OUTPUT}"
+          echo "upstream_asterinas_release_version=${upstream_asterinas_release_version}" >> "${GITHUB_OUTPUT}"
+          echo "upstream_asterinas_docker_image_version=${upstream_asterinas_docker_image_version}" >> "${GITHUB_OUTPUT}"
+          echo "coco_release_version=${coco_release_version}" >> "${GITHUB_OUTPUT}"
+          echo "kata_release_version=${kata_release_version}" >> "${GITHUB_OUTPUT}"
+          echo "kata_release_tag=${kata_release_tag}" >> "${GITHUB_OUTPUT}"
+          echo "kata_release_package_url=${kata_release_package_url}" >> "${GITHUB_OUTPUT}"
+          echo "coco_release_package_url=${coco_release_package_url}" >> "${GITHUB_OUTPUT}"
+
+      - name: Install Release Build Dependencies
+        if: ${{ steps.changes.outputs.should_build_local_release == 'true' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          sudo apt-get update
+          sudo apt-get install -y \
+            cargo \
+            clang \
+            git \
+            gzip \
+            libcryptsetup-dev \
+            libssl-dev \
+            libtss2-dev \
+            make \
+            pkg-config \
+            protobuf-compiler \
+            skopeo \
+            umoci \
+            zstd
+
+      - name: Build Local CoCo Release Asset
+        if: ${{ steps.changes.outputs.should_build_local_release == 'true' }}
+        id: local-release
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          chmod +x ./tools/packaging/release/build-coco-guest-artifacts.sh
+          chmod +x ./tools/packaging/release/rebuild-coco-initrd.sh
+          chmod +x ./tools/packaging/release/build-asterinas-coco-release.sh
+          ./tools/packaging/release/build-asterinas-coco-release.sh
+
+      - name: Prepare Local CoCo Release Workspace
+        shell: bash
+        run: |
+          set -euo pipefail
+          install -d /tmp/docker-build-contexts/local_coco_release
+          find /tmp/docker-build-contexts/local_coco_release -mindepth 1 -maxdepth 1 -delete
+
+      - name: Stage Local CoCo Release Asset
+        if: ${{ steps.changes.outputs.should_build_local_release == 'true' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp "${{ steps.local-release.outputs.release_asset }}" /tmp/docker-build-contexts/local_coco_release/
+
+      - name: Set Up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Local Image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: tools/docker/Dockerfile
+          build-contexts: |
+            local_coco_release=/tmp/docker-build-contexts/local_coco_release
+          platforms: linux/amd64
+          load: true
+          push: false
+          provenance: false
+          tags: |
+            ${{ steps.resolve.outputs.image }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.description=Asterinas CoCo development image with prebuilt Asterinas Kata artifacts
+            org.opencontainers.image.version=${{ steps.resolve.outputs.upstream_asterinas_docker_image_version }}
+            org.opencontainers.image.base.name=asterinas/asterinas:${{ steps.resolve.outputs.upstream_asterinas_docker_image_version }}
+            io.asterinas.version=${{ steps.resolve.outputs.upstream_asterinas_release_version }}
+            io.confidential-containers.version=${{ steps.resolve.outputs.coco_release_version }}
+          build-args: |
+            UPSTREAM_ASTERINAS_BASE_IMAGE=asterinas/asterinas:${{ steps.resolve.outputs.upstream_asterinas_docker_image_version }}
+            UPSTREAM_ASTERINAS_RELEASE_VERSION=${{ steps.resolve.outputs.upstream_asterinas_release_version }}
+            UPSTREAM_ASTERINAS_DOCKER_IMAGE_VERSION=${{ steps.resolve.outputs.upstream_asterinas_docker_image_version }}
+            COCO_RELEASE_VERSION=${{ steps.resolve.outputs.coco_release_version }}
+            KATA_RELEASE_TAG=${{ steps.resolve.outputs.kata_release_tag }}
+            KATA_RELEASE_PACKAGE_URL=${{ steps.resolve.outputs.kata_release_package_url }}
+            COCO_RELEASE_PACKAGE_URL=${{ steps.resolve.outputs.coco_release_package_url }}
+
+      - name: Verify Local Image Metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker image inspect "${{ steps.resolve.outputs.image }}" >/dev/null
+
+      - name: Start CoCo Dev Container
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          docker rm -f coco-dev >/dev/null 2>&1 || true
+          docker run -d \
+            --rm \
+            --name coco-dev \
+            --privileged \
+            --cgroupns host \
+            --device /dev/kvm \
+            --device /dev/vhost-net \
+            --device /dev/vhost-vsock \
+            --tmpfs /var/lib/containerd-nydus:rw,size=512m \
+            "${{ steps.resolve.outputs.image }}" \
+            sleep infinity
+
+      - name: Install CoCo Cluster
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker exec coco-dev /opt/coco/install-coco-cluster.sh
+
+      - name: Run CoCo Demo
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          docker exec coco-dev kubectl apply -f /opt/coco/manifests/alpine-kata-qemu-coco-dev.yaml
+          docker exec coco-dev kubectl wait \
+            --for=condition=Ready \
+            pod/alpine-kata-qemu-coco-dev \
+            --timeout=5m
+
+      - name: Verify Alpine Guest
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          alpine_release_raw="$(
+            docker exec coco-dev kubectl exec alpine-kata-qemu-coco-dev -- cat /etc/alpine-release
+          )"
+          alpine_release="$(
+            printf '%s\n' "${alpine_release_raw}" | grep -Eo '[0-9]+(\.[0-9]+)+' | tail -n 1
+          )"
+          test -n "${alpine_release}"
+
+          echo "Parsed Alpine release: ${alpine_release}"
+          echo "Alpine release: \`${alpine_release}\`" >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Delete Demo Pod
+        if: always()
+        shell: bash
+        run: |
+          docker exec coco-dev kubectl delete pod alpine-kata-qemu-coco-dev --ignore-not-found=true --wait=true --timeout=2m || true
+
+      - name: Collect Failure Logs
+        if: failure()
+        shell: bash
+        run: |
+          docker exec coco-dev sh -lc 'echo "===== console.log ====="; tail -n 240 /tmp/console.log 2>/dev/null || true'
+          docker exec coco-dev sh -lc 'echo "===== qemu-serial.log ====="; tail -n 240 /tmp/qemu-serial.log 2>/dev/null || true'
+          docker exec coco-dev sh -lc 'echo "===== containerd.log ====="; tail -n 240 /tmp/containerd.log 2>/dev/null || true'
+
+      - name: Stop CoCo Dev Container
+        if: always()
+        shell: bash
+        run: |
+          docker rm -f coco-dev >/dev/null 2>&1 || true

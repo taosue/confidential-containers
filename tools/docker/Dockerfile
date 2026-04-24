@@ -10,6 +10,8 @@ ARG DEBIAN_FRONTEND=noninteractive
 ARG KATA_RELEASE_PACKAGE_URL=
 ARG COCO_RELEASE_PACKAGE_URL=
 
+COPY --from=local_coco_release / /tmp/local-coco-release/
+
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     curl \
@@ -17,7 +19,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     zstd && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
-RUN test -n "${KATA_RELEASE_PACKAGE_URL}" && test -n "${COCO_RELEASE_PACKAGE_URL}"
+RUN test -n "${KATA_RELEASE_PACKAGE_URL}"
 
 RUN set -euo pipefail && \
     curl_common=(--fail --show-error --silent --location --retry 10 --retry-delay 3 --retry-all-errors --connect-timeout 20 --speed-time 30 --speed-limit 1024) && \
@@ -31,7 +33,13 @@ RUN set -euo pipefail && \
     install -m 0755 /tmp/kata/opt/kata/bin/containerd-shim-kata-v2 /out/prebuilt/containerd-shim-kata-v2 && \
     install -m 0755 /tmp/kata/opt/kata/share/kata-containers/aster-kernel-osdk-bin.qemu_elf /out/prebuilt/aster-kernel-osdk-bin.qemu_elf && \
     install -m 0755 /tmp/kata/opt/kata/share/kata-containers/aster-kernel-osdk-bin.qemu_elf-tdx /out/prebuilt/aster-kernel-osdk-bin.qemu_elf-tdx && \
-    curl "${curl_common[@]}" -o /tmp/coco-release.tar.gz "${COCO_RELEASE_PACKAGE_URL}" && \
+    local_coco_release_archive="$(find /tmp/local-coco-release -maxdepth 1 -type f -name '*.tar.gz' | head -n 1 || true)" && \
+    if [ -n "${local_coco_release_archive}" ]; then \
+      cp "${local_coco_release_archive}" /tmp/coco-release.tar.gz; \
+    else \
+      test -n "${COCO_RELEASE_PACKAGE_URL}" && \
+      curl "${curl_common[@]}" -o /tmp/coco-release.tar.gz "${COCO_RELEASE_PACKAGE_URL}"; \
+    fi && \
     tar -xzf /tmp/coco-release.tar.gz -C /tmp/coco ./artifacts/kata-containers-initrd.img && \
     install -m 0644 /tmp/coco/artifacts/kata-containers-initrd.img /out/prebuilt/kata-containers-initrd.img && \
     printf '%s\n' "${KATA_RELEASE_PACKAGE_URL}" > /out/metadata/kata-release-package-url && \

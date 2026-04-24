@@ -225,6 +225,8 @@ ensure_preloaded_images() {
     local imported_kubeadm=0
     local imported_chart=0
     local unpack_marker
+    local kata_deploy_image="quay.io/kata-containers/kata-deploy:3.28.0"
+    local kata_deploy_unpack_marker
 
     for image in "${KUBEADM_IMAGES[@]}"; do
         local archive="${COCO_ROOT}/cache/kubeadm-images/$(image_archive_name "${image}").tar"
@@ -259,7 +261,7 @@ ensure_preloaded_images() {
     fi
 
     local kata_deploy_archive="${COCO_ROOT}/cache/kata-deploy/kata-deploy-amd64.tar"
-    if [ -f "${kata_deploy_archive}" ] && ! image_exists "quay.io/kata-containers/kata-deploy:3.28.0"; then
+    if [ -f "${kata_deploy_archive}" ] && ! image_exists "${kata_deploy_image}"; then
         log "importing cached kata-deploy image (this can take several minutes)"
         if ! ctr -n k8s.io images import --local --all-platforms --no-unpack "${kata_deploy_archive}" >/tmp/ctr-import-kata-deploy.log 2>&1; then
             echo "failed to import cached kata-deploy image" >&2
@@ -267,6 +269,20 @@ ensure_preloaded_images() {
             tail -n 240 /tmp/ctr-import-kata-deploy.log >&2 2>/dev/null || true
             return 1
         fi
+    fi
+
+    local kata_deploy_digest
+    kata_deploy_digest="$(ctr -n k8s.io images ls | awk -v ref="${kata_deploy_image}" '$1 == ref {print $3; exit}')"
+    kata_deploy_unpack_marker="/var/lib/containerd/.coco-kata-deploy-native-unpack.${kata_deploy_digest:-missing}"
+    if [ -n "${kata_deploy_digest}" ] && [ ! -f "${kata_deploy_unpack_marker}" ]; then
+        mount_tmpfs_once /var/lib/containerd/tmpmounts 512m
+        if ! ctr -n k8s.io snapshots unpack --snapshotter native "${kata_deploy_digest}" >/tmp/ctr-unpack-kata-deploy.log 2>&1; then
+            echo "failed to unpack kata-deploy image with native snapshotter" >&2
+            echo "===== ctr-unpack-kata-deploy.log =====" >&2
+            tail -n 240 /tmp/ctr-unpack-kata-deploy.log >&2 2>/dev/null || true
+            return 1
+        fi
+        touch "${kata_deploy_unpack_marker}"
     fi
 
     local chart_image="quay.io/kata-containers/kubectl:20260112"
@@ -282,22 +298,6 @@ ensure_preloaded_images() {
             tail -n 240 /tmp/ctr-import-chart-images.log >&2 2>/dev/null || true
             return 1
         fi
-    fi
-
-    local kata_deploy_digest
-    local kata_deploy_unpack_marker
-    kata_deploy_digest="$(ctr -n k8s.io images ls | awk '$1 == "quay.io/kata-containers/kata-deploy:3.28.0" {print $3; exit}')"
-    kata_deploy_unpack_marker="/var/lib/containerd/.coco-kata-deploy-native-unpack.${kata_deploy_digest:-missing}"
-    if [ -n "${kata_deploy_digest}" ] && [ ! -f "${kata_deploy_unpack_marker}" ]; then
-        mount_tmpfs_once /var/lib/containerd/tmpmounts 512m
-        log "ensuring kata-deploy image is unpacked with native snapshotter"
-        if ! ctr -n k8s.io snapshots unpack --snapshotter native "${kata_deploy_digest}" >/tmp/ctr-unpack-kata-deploy.log 2>&1; then
-            echo "failed to unpack kata-deploy image with native snapshotter" >&2
-            echo "===== ctr-unpack-kata-deploy.log =====" >&2
-            tail -n 240 /tmp/ctr-unpack-kata-deploy.log >&2 2>/dev/null || true
-            return 1
-        fi
-        touch "${kata_deploy_unpack_marker}"
     fi
 }
 
