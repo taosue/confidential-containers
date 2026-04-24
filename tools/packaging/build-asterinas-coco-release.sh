@@ -8,7 +8,7 @@ set -o nounset
 set -o pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-repo_root_dir="$(cd "${script_dir}/../../../" && pwd)"
+repo_root_dir="$(cd "${script_dir}/../../" && pwd)"
 
 ARCHITECTURE="${ARCHITECTURE:-amd64}"
 VERSION="${VERSION:-$(<"${repo_root_dir}/VERSION")}"

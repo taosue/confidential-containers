@@ -140,10 +140,10 @@ jobs:
         run: |
           set -euo pipefail
 
-          chmod +x ./tools/packaging/release/build-coco-guest-artifacts.sh
-          chmod +x ./tools/packaging/release/rebuild-coco-initrd.sh
-          chmod +x ./tools/packaging/release/build-asterinas-coco-release.sh
-          ./tools/packaging/release/build-asterinas-coco-release.sh
+          chmod +x ./tools/packaging/build-coco-guest-artifacts.sh
+          chmod +x ./tools/packaging/rebuild-coco-initrd.sh
+          chmod +x ./tools/packaging/build-asterinas-coco-release.sh
+          ./tools/packaging/build-asterinas-coco-release.sh
 
       - name: Prepare Local CoCo Release Workspace
         shell: bash

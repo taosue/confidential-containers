@@ -8,7 +8,7 @@ set -o nounset
 set -o pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-repo_root_dir="$(cd "${script_dir}/../../../" && pwd)"
+repo_root_dir="$(cd "${script_dir}/../../" && pwd)"
 source "${repo_root_dir}/tools/scripts/asterinas-coco-defaults.sh"
 
 BUILD_ROOT="${BUILD_ROOT:-${repo_root_dir}/build/asterinas-coco-release}"
