@@ -13,6 +13,11 @@ on:
       - KATA_VERSION
   workflow_dispatch:
     inputs:
+      build_local_release:
+        description: Build CoCo release tar.gz locally before building the image
+        required: true
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -33,6 +38,7 @@ jobs:
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          WORKFLOW_BUILD_LOCAL_RELEASE: ${{ inputs.build_local_release }}
         run: |
           set -euo pipefail
 
@@ -44,6 +50,8 @@ jobs:
             if printf '%s\n' "${changed_files}" | grep -Eq '^(VERSION|KATA_VERSION|tools/packaging/)'; then
               should_build_local_release=true
             fi
+          elif [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${WORKFLOW_BUILD_LOCAL_RELEASE}" = "true" ]; then
+            should_build_local_release=true
           fi
 
           echo "should_build_local_release=${should_build_local_release}" >> "${GITHUB_OUTPUT}"
