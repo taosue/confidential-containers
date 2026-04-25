@@ -87,7 +87,7 @@ jobs:
 
           version="$(<VERSION)"
           release_tag="v${version}"
-          release_name="${WORKFLOW_RELEASE_NAME:-Asterinas CoCo ${version}}"
+          release_name="${WORKFLOW_RELEASE_NAME:-CoCo with Asterinas as the Guest Kernel ${version}}"
           draft_release="${WORKFLOW_DRAFT_RELEASE}"
 
           echo "tag=${release_tag}" >> "${GITHUB_OUTPUT}"

@@ -156,7 +156,7 @@ write_release_notes() {
 	release_sha="$(sha256sum "${RELEASE_ASSET}" | awk '{print $1}')"
 
 	cat > "${RELEASE_NOTES}" <<EOF
-# Asterinas CoCo ${VERSION}
+# CoCo release with Asterinas as the guest kernel.
 
 - CoCo version: \`${VERSION}\`
 - Kata release tag: [\`${KATA_RELEASE_TAG}\`](https://github.com/${KATA_RELEASE_REPOSITORY}/tree/${KATA_RELEASE_TAG})
