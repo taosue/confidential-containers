@@ -204,9 +204,7 @@ RUN install -m 0644 /opt/coco/config/configuration-qemu-coco-dev-asterinas.toml 
     install -m 0644 /opt/coco/config/10-bridge.conflist /opt/coco/10-bridge.conflist && \
     install -m 0644 /opt/coco/config/nydus-config-proxy.toml /opt/coco/nydus-config-proxy.toml && \
     chmod 0755 /opt/coco/scripts/*.sh && \
-    ln -sf /opt/coco/scripts/install-coco-cluster.sh /opt/coco/install-coco-cluster.sh && \
-    ln -sf /opt/coco/scripts/run-coco-demo.sh /opt/coco/run-coco-demo.sh && \
-    ln -sf /opt/coco/scripts/run-coco-tdx-demo.sh /opt/coco/run-coco-tdx-demo.sh && \
+    ln -sf /opt/coco/scripts/setup-coco-k8s.sh /opt/coco/setup-coco-k8s.sh && \
     chmod 0755 \
         /opt/coco/prebuilt/asterinas-coco/containerd-shim-kata-v2 \
         /opt/coco/prebuilt/asterinas-coco/aster-kernel-osdk-bin.qemu_elf \

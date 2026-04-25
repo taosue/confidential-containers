@@ -218,7 +218,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          docker exec coco-dev /opt/coco/install-coco-cluster.sh
+          docker exec coco-dev /opt/coco/setup-coco-k8s.sh
 
       - name: Run CoCo Demo
         shell: bash
