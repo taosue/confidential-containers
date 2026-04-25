@@ -76,7 +76,7 @@ kernel_verity_params = ""
 
 # Path to the firmware.
 # If you want that qemu uses the default firmware leave this option empty
-firmware = "/opt/kata/share/ovmf/OVMF.inteltdx.fd"
+firmware = "/root/ovmf/release/OVMF.fd"
 
 # Path to the firmware volume.
 # firmware TDVF or OVMF can be split into FIRMWARE_VARS.fd (UEFI variables
@@ -186,7 +186,7 @@ disable_block_device_use = false
 #   - virtio-9p
 #   - virtio-fs-nydus
 #   - none
-shared_fs = "virtio-fs"
+shared_fs = "none"
 
 # Path to vhost-user-fs daemon.
 virtio_fs_daemon = "/usr/libexec/virtiofsd"
