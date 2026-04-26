@@ -12,7 +12,6 @@ repo_root_dir="$(cd "${script_dir}/../../" && pwd)"
 
 ARCHITECTURE="${ARCHITECTURE:-amd64}"
 VERSION="${VERSION:-$(<"${repo_root_dir}/VERSION")}"
-KATA_VERSION="${KATA_VERSION:-$(<"${repo_root_dir}/KATA_VERSION")}"
 source "${repo_root_dir}/tools/scripts/asterinas-coco-defaults.sh"
 
 BUILD_ROOT="${BUILD_ROOT:-${repo_root_dir}/build/asterinas-coco-release}"

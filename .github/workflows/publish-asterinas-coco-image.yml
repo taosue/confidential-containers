@@ -59,7 +59,7 @@ jobs:
               base64 -d | tr -d '\n'
           )"
           coco_release_version="$(<VERSION)"
-          kata_release_version="$(<KATA_VERSION)"
+          kata_release_version="${KATA_VERSION}"
           target_image_repository="${IMAGE_REPOSITORY}"
           published_image_tag="${upstream_asterinas_docker_image_version}"
           kata_release_repository="${KATA_RELEASE_REPOSITORY}"

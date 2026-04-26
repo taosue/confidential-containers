@@ -10,7 +10,6 @@ on:
       - tools/packaging/**
       - tools/scripts/**
       - VERSION
-      - KATA_VERSION
   workflow_dispatch:
     inputs:
       build_local_release:
@@ -47,7 +46,7 @@ jobs:
             changed_files="$(
               git diff --name-only "${BASE_SHA}" "${HEAD_SHA}"
             )"
-            if printf '%s\n' "${changed_files}" | grep -Eq '^(VERSION|KATA_VERSION|tools/packaging/)'; then
+            if printf '%s\n' "${changed_files}" | grep -Eq '^(VERSION|tools/packaging/|tools/scripts/asterinas-coco-defaults\.sh)'; then
               should_build_local_release=true
             fi
           elif [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${WORKFLOW_BUILD_LOCAL_RELEASE}" = "true" ]; then
@@ -74,7 +73,7 @@ jobs:
               base64 -d | tr -d '\n'
           )"
           coco_release_version="$(<VERSION)"
-          kata_release_version="$(<KATA_VERSION)"
+          kata_release_version="${KATA_VERSION}"
           image_repository="${IMAGE_REPOSITORY}"
           image_tag="${upstream_asterinas_docker_image_version}"
           image="${image_repository}:${image_tag}"
