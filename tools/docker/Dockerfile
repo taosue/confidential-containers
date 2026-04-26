@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: MPL-2.0
 
-ARG UPSTREAM_ASTERINAS_BASE_IMAGE
+ARG ASTERINAS_BASE_IMAGE
 
 FROM ubuntu:24.04 AS fetch-release-assets
 
@@ -45,7 +45,7 @@ RUN set -euo pipefail && \
     printf '%s\n' "${KATA_RELEASE_PACKAGE_URL}" > /out/metadata/kata-release-package-url && \
     printf '%s\n' "${COCO_RELEASE_PACKAGE_URL}" > /out/metadata/coco-release-package-url
 
-FROM ${UPSTREAM_ASTERINAS_BASE_IMAGE} AS build-bases
+FROM ${ASTERINAS_BASE_IMAGE} AS build-bases
 
 SHELL ["/bin/bash", "-c"]
 
@@ -55,8 +55,7 @@ ARG K8S_VERSION=1.30.14
 ARG CRICTL_VERSION=1.30.0
 ARG CNI_PLUGINS_VERSION=1.6.2
 ARG NYDUS_SNAPSHOTTER_VERSION=v0.15.10
-ARG UPSTREAM_ASTERINAS_RELEASE_VERSION=
-ARG UPSTREAM_ASTERINAS_DOCKER_IMAGE_VERSION=
+ARG ASTERINAS_DOCKER_IMAGE_VERSION=
 ARG COCO_RELEASE_VERSION=
 ARG KATA_RELEASE_TAG=
 ARG KATA_RELEASE_PACKAGE_URL=
@@ -211,8 +210,7 @@ RUN install -m 0644 /opt/coco/config/configuration-qemu-coco-dev-asterinas.toml 
         /opt/coco/prebuilt/asterinas-coco/aster-kernel-osdk-bin-tdx && \
     chmod 0644 /opt/coco/prebuilt/asterinas-coco/kata-containers-initrd.img
 
-RUN printf '%s\n' "${UPSTREAM_ASTERINAS_RELEASE_VERSION}" > /opt/coco/metadata/asterinas-version && \
-    printf '%s\n' "${UPSTREAM_ASTERINAS_DOCKER_IMAGE_VERSION}" > /opt/coco/metadata/asterinas-docker-image-version && \
+RUN printf '%s\n' "${ASTERINAS_DOCKER_IMAGE_VERSION}" > /opt/coco/metadata/asterinas-docker-image-version && \
     printf '%s\n' "${COCO_RELEASE_VERSION}" > /opt/coco/metadata/coco-release-version && \
     printf '%s\n' "${KATA_RELEASE_TAG}" > /opt/coco/metadata/kata-release-tag && \
     printf '%s\n' "${KATA_RELEASE_PACKAGE_URL}" > /opt/coco/metadata/kata-release-package-url && \

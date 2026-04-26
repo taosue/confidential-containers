@@ -50,18 +50,12 @@ jobs:
           set -euo pipefail
 
           source ./tools/scripts/asterinas-coco-defaults.sh
-          upstream_asterinas_release_version="$(
-            gh api repos/asterinas/asterinas/contents/VERSION?ref=main --jq .content |
-              base64 -d | tr -d '\n'
-          )"
-          upstream_asterinas_docker_image_version="$(
-            gh api repos/asterinas/asterinas/contents/DOCKER_IMAGE_VERSION?ref=main --jq .content |
-              base64 -d | tr -d '\n'
-          )"
+          asterinas_base_image="${ASTERINAS_BASE_IMAGE}"
+          asterinas_docker_image_version="${asterinas_base_image##*:}"
           coco_release_version="$(<VERSION)"
           kata_release_version="${KATA_VERSION}"
           target_image_repository="${IMAGE_REPOSITORY}"
-          published_image_tag="${upstream_asterinas_docker_image_version}"
+          published_image_tag="${asterinas_docker_image_version}"
           kata_release_repository="${KATA_RELEASE_REPOSITORY}"
           kata_release_tag="${KATA_RELEASE_TAG}"
           kata_release_package_url=""
@@ -95,14 +89,13 @@ jobs:
 
           test -n "${target_image_repository}"
           test -n "${published_image_tag}"
-          test -n "${upstream_asterinas_release_version}"
-          test -n "${upstream_asterinas_docker_image_version}"
+          test -n "${asterinas_docker_image_version}"
           test -n "${kata_release_tag}"
           test -n "${kata_release_package_url}"
           test -n "${coco_release_package_url}"
 
-          echo "upstream_asterinas_release_version=${upstream_asterinas_release_version}" >> "${GITHUB_OUTPUT}"
-          echo "upstream_asterinas_docker_image_version=${upstream_asterinas_docker_image_version}" >> "${GITHUB_OUTPUT}"
+          echo "asterinas_base_image=${asterinas_base_image}" >> "${GITHUB_OUTPUT}"
+          echo "asterinas_docker_image_version=${asterinas_docker_image_version}" >> "${GITHUB_OUTPUT}"
           echo "coco_release_version=${coco_release_version}" >> "${GITHUB_OUTPUT}"
           echo "kata_release_version=${kata_release_version}" >> "${GITHUB_OUTPUT}"
           echo "target_image_repository=${target_image_repository}" >> "${GITHUB_OUTPUT}"
@@ -115,11 +108,10 @@ jobs:
           {
             echo '## Resolved Build Inputs'
             echo
-            echo "- Upstream Asterinas release version: \`${upstream_asterinas_release_version}\`"
-            echo "- Upstream Asterinas Docker image version: \`${upstream_asterinas_docker_image_version}\`"
+            echo "- Asterinas Docker image version: \`${asterinas_docker_image_version}\`"
             echo "- CoCo release version: \`${coco_release_version}\`"
             echo "- Kata release version: \`${kata_release_version}\`"
-            echo "- Base image: \`asterinas/asterinas:${upstream_asterinas_docker_image_version}\`"
+            echo "- Base image: \`${asterinas_base_image}\`"
             echo "- Published image: \`${target_image_repository}:${published_image_tag}\`"
             echo "- Kata release tag: \`${kata_release_tag}\`"
             echo "- Kata release package: \`${kata_release_package_url}\`"
@@ -160,13 +152,11 @@ jobs:
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.description=Asterinas CoCo development image with prebuilt Asterinas Kata artifacts
             org.opencontainers.image.version=${{ steps.resolve.outputs.published_image_tag }}
-            org.opencontainers.image.base.name=asterinas/asterinas:${{ steps.resolve.outputs.upstream_asterinas_docker_image_version }}
-            io.asterinas.version=${{ steps.resolve.outputs.upstream_asterinas_release_version }}
+            org.opencontainers.image.base.name=${{ steps.resolve.outputs.asterinas_base_image }}
             io.confidential-containers.version=${{ steps.resolve.outputs.coco_release_version }}
           build-args: |
-            UPSTREAM_ASTERINAS_BASE_IMAGE=asterinas/asterinas:${{ steps.resolve.outputs.upstream_asterinas_docker_image_version }}
-            UPSTREAM_ASTERINAS_RELEASE_VERSION=${{ steps.resolve.outputs.upstream_asterinas_release_version }}
-            UPSTREAM_ASTERINAS_DOCKER_IMAGE_VERSION=${{ steps.resolve.outputs.upstream_asterinas_docker_image_version }}
+            ASTERINAS_BASE_IMAGE=${{ steps.resolve.outputs.asterinas_base_image }}
+            ASTERINAS_DOCKER_IMAGE_VERSION=${{ steps.resolve.outputs.asterinas_docker_image_version }}
             COCO_RELEASE_VERSION=${{ steps.resolve.outputs.coco_release_version }}
             KATA_RELEASE_TAG=${{ steps.resolve.outputs.kata_release_tag }}
             KATA_RELEASE_PACKAGE_URL=${{ steps.resolve.outputs.kata_release_package_url }}
@@ -186,9 +176,9 @@ jobs:
             echo '## Asterinas CoCo image result'
             echo
             echo "- Published image: \`${{ steps.resolve.outputs.target_image_repository }}:${{ steps.resolve.outputs.published_image_tag }}\`"
-            echo "- Base image: \`asterinas/asterinas:${{ steps.resolve.outputs.upstream_asterinas_docker_image_version }}\`"
+            echo "- Base image: \`${{ steps.resolve.outputs.asterinas_base_image }}\`"
             echo "- CoCo release version: \`${{ steps.resolve.outputs.coco_release_version }}\`"
-            echo "- Upstream Asterinas Docker image version: \`${{ steps.resolve.outputs.upstream_asterinas_docker_image_version }}\`"
+            echo "- Asterinas Docker image version: \`${{ steps.resolve.outputs.asterinas_docker_image_version }}\`"
             echo "- Kata release package: \`${{ steps.resolve.outputs.kata_release_package_url }}\`"
             echo "- CoCo release package: \`${{ steps.resolve.outputs.coco_release_package_url }}\`"
             echo "- Push enabled: \`${{ steps.resolve.outputs.should_push }}\`"

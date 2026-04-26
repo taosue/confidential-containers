@@ -14,8 +14,8 @@ Layout:
 
 This image is built from:
 
-- the base image is provided through `UPSTREAM_ASTERINAS_BASE_IMAGE`
-  and the current CI default is `asterinas/asterinas:<DOCKER_IMAGE_VERSION>`
+- the base image is provided through `ASTERINAS_BASE_IMAGE`
+  and the repository default is maintained in `tools/scripts/asterinas-coco-defaults.sh`
 - the prebuilt Asterinas Kata artifacts come from an `asterinas/kata-containers` release package
 - the customized CoCo initrd comes from this repository's release package
 
@@ -31,7 +31,7 @@ From this directory:
 ```bash
 cd tools/docker
 DOCKER_BUILDKIT=1 docker build --progress=plain \
-    --build-arg UPSTREAM_ASTERINAS_BASE_IMAGE=asterinas/asterinas:<DOCKER_IMAGE_VERSION> \
+    --build-arg ASTERINAS_BASE_IMAGE=asterinas/asterinas:<DOCKER_IMAGE_VERSION> \
     --build-arg KATA_RELEASE_PACKAGE_URL=<asterinas-kata-release-package-url> \
     --build-arg COCO_RELEASE_PACKAGE_URL=<confidential-containers-release-package-url> \
     -t asterinas/coco:<DOCKER_IMAGE_VERSION> \
