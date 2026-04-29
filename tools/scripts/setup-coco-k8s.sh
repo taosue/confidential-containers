@@ -358,6 +358,14 @@ label_node_for_kata() {
     kubectl label node "${node_name}" katacontainers.io/kata-runtime=true --overwrite
 }
 
+untaint_control_plane_node() {
+    local node_name
+
+    node_name="$(kubectl get nodes -o jsonpath='{.items[0].metadata.name}')"
+    log "removing control-plane NoSchedule taint from ${node_name}"
+    kubectl taint nodes "${node_name}" node-role.kubernetes.io/control-plane:NoSchedule- >/dev/null 2>&1 || true
+}
+
 kata_artifacts_ready() {
     [ -x /opt/kata/nydus-snapshotter/containerd-nydus-grpc ] && \
     [ -x /opt/kata/nydus-snapshotter/nydus-overlayfs ]
@@ -477,6 +485,7 @@ main() {
 
     init_kubernetes
     wait_for_cluster_basics
+    untaint_control_plane_node
     label_node_for_kata
     install_runtimeclasses
     finalize_runtime_config

@@ -2,20 +2,9 @@ apiVersion: v1
 kind: Pod
 metadata:
   name: alpine-kata-qemu-coco-dev
-  namespace: default
-  labels:
-    app: alpine-kata-qemu-coco-dev
-  annotations:
-    io.katacontainers.config.runtime.create_container_timeout: "300"
 spec:
   runtimeClassName: kata-qemu-coco-dev-asterinas
-  tolerations:
-    - key: node-role.kubernetes.io/control-plane
-      operator: Exists
-      effect: NoSchedule
   containers:
     - name: alpine
       image: docker.io/library/alpine:3.22
-      imagePullPolicy: IfNotPresent
-      command: ["/bin/sh", "-c"]
-      args: ["sleep infinity"]
+      command: ["sleep", "infinity"]
